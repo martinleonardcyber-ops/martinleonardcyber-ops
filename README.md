@@ -1,31 +1,33 @@
 <div align="center">
 
-  # Hey, I'm Léo 👋
+# Hey, I'm Léo 👋
 
-  ### 🔐 Étudiant en Cybersécurité | 🔴 Red Team Enthusiast | 🚀 Builder de Projets
+### 🔐 Cybersecurity Student | 🔴 Red Team Enthusiast | 🚀 Project Builder
 
-  [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/martinleo)
-  [![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/martinleonardcyber-ops)
-  [![Email](https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:martin.leonard.cyber@icloud.com)
+**🇬🇧 English** | [🇫🇷 Français](#-version-française)
 
-  </div>
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/martinleo)
+[![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/martinleonardcyber-ops)
+[![Email](https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:martin.leonard.cyber@icloud.com)
 
-  ---
+</div>
 
-  ## 🧑‍💻 About Me
+---
 
-  ```python
+## 🧑‍💻 About Me
+
+```python
 class Leo:
     def __init__(self):
         self.name = "Léo"
         self.role = "Cybersecurity Student"
         self.location = "France 🇫🇷"
         self.interests = ["Red Team", "Pentesting", "Web Dev", "AI", "SaaS"]
-        self.currently_learning = ["Offensive Security", "AI/ML", "Cloud Security"]
-        self.fun_fact = "Je build plus de side projects que je n'en termine... pour l'instant 😄"
+        self.learning = ["Offensive Security", "AI/ML", "Cloud Security"]
+        self.fun_fact = "I build more side projects than I finish... for now 😄"
 
     def say_hi(self):
-        print("Hey! Toujours ouvert aux collabs et discussions tech!")
+        print("Hey! Always open to collabs and tech discussions!")
 
 me = Leo()
 me.say_hi()
@@ -70,32 +72,79 @@ me.say_hi()
 
 <div align="center">
 
-  <img src="https://github-readme-stats.vercel.app/api?username=martinleonardcyber-ops&show_icons=true&theme=tokyonight&hide_border=true&count_private=true" alt="GitHub Stats" height="170"/>
-  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=martinleonardcyber-ops&layout=compact&theme=tokyonight&hide_border=true" alt="Top Languages" height="170"/>
-
-  <img src="https://github-readme-streak-stats.herokuapp.com/?user=martinleonardcyber-ops&theme=tokyonight&hide_border=true" alt="GitHub Streak"/>
+  <img src="https://github-readme-stats.vercel.app/api?username=martinleonardcyber-ops&show_icons=true&theme=tokyonight&hide_border=true&count_private=true" alt="GitHub Stats" height="180"/>
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=martinleonardcyber-ops&layout=compact&theme=tokyonight&hide_border=true" alt="Top Languages" height="180"/>
 
   </div>
 
   ---
 
-  ## 🎯 What I'm Up To
+  ## 🎯 Currently
 
-  - 🔭 **Currently working on:** Side projects SaaS & apps perso
+  - 🔭 **Working on:** SaaS side projects & personal apps
   - - 🌱 **Learning:** Pentesting, Offensive Security, AI/ML
-    - - 💬 **Ask me about:** Cybersécurité, Python, Web Dev, mes projets
-      - - ☕ **Fun fact:** Je kiffe l'IA et je build en permanence !
+    - - 💬 **Ask me about:** Cybersecurity, Python, Web Dev
+      - - ☕ **Fun fact:** I love AI and I'm always building!
        
         - ---
 
         <div align="center">
 
-          ### 💬 Let's Connect!
+        ### 💬 Let's Connect!
 
-        *Toujours ouvert aux discussions, collaborations et nouvelles opportunités !*
+        *Always open to discussions, collaborations and new opportunities!*
 
         [![Buy Me A Coffee](https://img.shields.io/badge/☕_Buy_me_a_coffee-FFDD00?style=for-the-badge)](https://www.buymeacoffee.com/martinleo)
 
         ![Profile Views](https://komarev.com/ghpvc/?username=martinleonardcyber-ops&color=blueviolet&style=for-the-badge)
 
         </div>
+
+        ---
+        ---
+
+        <div align="center">
+
+        # 🇫🇷 Version Française
+
+        </div>
+
+        ## 🧑‍💻 À Propos
+
+        ```python
+        class Leo:
+            def __init__(self):
+                self.nom = "Léo"
+                self.role = "Étudiant en Cybersécurité"
+                self.localisation = "France 🇫🇷"
+                self.passions = ["Red Team", "Pentesting", "Dev Web", "IA", "SaaS"]
+                self.apprentissage = ["Sécurité Offensive", "IA/ML", "Cloud Security"]
+                self.fun_fact = "Je build plus de side projects que je n'en termine... pour l'instant 😄"
+
+            def salut(self):
+                print("Hey! Toujours ouvert aux collabs et discussions tech!")
+
+        moi = Leo()
+        moi.salut()
+        ```
+
+        ---
+
+        ## 🎯 En ce moment
+
+        - 🔭 **Je travaille sur:** Des side projects SaaS & apps perso
+        - - 🌱 **J'apprends:** Pentesting, Sécurité Offensive, IA/ML (en autodidacte)
+          - - 💬 **Pose-moi des questions sur:** Cybersécurité, Python, Dev Web, mes projets
+            - - ☕ **Fun fact:** Je kiffe l'IA et je build en permanence !
+             
+              - ---
+
+              <div align="center">
+
+              ### 💬 Contacte-moi !
+
+              *Toujours ouvert aux discussions, collaborations et nouvelles opportunités !*
+
+              [![Buy Me A Coffee](https://img.shields.io/badge/☕_Offre_moi_un_café-FFDD00?style=for-the-badge)](https://www.buymeacoffee.com/martinleo)
+
+              </div>
