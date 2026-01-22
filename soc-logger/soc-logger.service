@@ -1,0 +1,42 @@
+[Unit]
+Description=SOC Logger - Systeme de Logging et Monitoring de Securite
+Documentation=https://github.com/martinleonardcyber-ops/soc-logger
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Repertoire de travail
+WorkingDirectory=/opt/soc-logger
+
+# Commande de demarrage
+ExecStart=/usr/bin/python3 /opt/soc-logger/main.py -c /etc/soc-logger/config.yaml
+
+# Redemarrage automatique en cas d'echec
+Restart=always
+RestartSec=10
+
+# Limites de ressources
+MemoryLimit=256M
+CPUQuota=25%
+
+# Securite
+PrivateTmp=true
+NoNewPrivileges=false
+ProtectSystem=false
+ProtectHome=false
+
+# Environnement
+Environment="PYTHONUNBUFFERED=1"
+Environment="LANG=en_US.UTF-8"
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=soc-logger
+
+[Install]
+WantedBy=multi-user.target

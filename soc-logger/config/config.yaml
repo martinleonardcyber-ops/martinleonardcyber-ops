@@ -1,0 +1,127 @@
+# SOC Logger Configuration
+# ========================
+# Systeme de logging et monitoring de securite
+
+# Discord Webhook Configuration
+discord:
+  webhook_url: "YOUR_DISCORD_WEBHOOK_URL_HERE"  # Remplacer par ton webhook
+  username: "SOC Logger"
+  avatar_url: "https://i.imgur.com/4M34hi2.png"
+
+  # Couleurs des embeds par severite (en decimal)
+  colors:
+    critical: 15158332  # Rouge
+    high: 15105570      # Orange
+    medium: 16776960    # Jaune
+    low: 3447003        # Bleu
+    info: 3066993       # Vert
+
+# Monitoring System Configuration
+monitoring:
+  # Intervalle de verification en secondes
+  check_interval: 30
+
+  # Seuils d'alerte systeme
+  thresholds:
+    cpu_percent: 85
+    memory_percent: 90
+    disk_percent: 90
+    network_connections: 500
+
+  # Processus a surveiller (liste vide = tous)
+  watched_processes: []
+
+# Security Monitoring
+security:
+  # Fichiers de logs a surveiller
+  log_files:
+    - /var/log/auth.log
+    - /var/log/syslog
+    - /var/log/fail2ban.log
+    - /var/log/ufw.log
+    - /var/log/nginx/access.log
+    - /var/log/nginx/error.log
+    - /var/log/apache2/access.log
+    - /var/log/apache2/error.log
+
+  # Patterns de detection (regex)
+  alert_patterns:
+    - pattern: "Failed password"
+      severity: "medium"
+      description: "Tentative de connexion SSH echouee"
+    - pattern: "Invalid user"
+      severity: "high"
+      description: "Tentative avec utilisateur invalide"
+    - pattern: "BREAK-IN ATTEMPT"
+      severity: "critical"
+      description: "Tentative d'intrusion detectee"
+    - pattern: "Accepted password|Accepted publickey"
+      severity: "info"
+      description: "Connexion SSH reussie"
+    - pattern: "sudo:.*COMMAND"
+      severity: "low"
+      description: "Commande sudo executee"
+    - pattern: "UFW BLOCK"
+      severity: "medium"
+      description: "Connexion bloquee par firewall"
+    - pattern: "Ban"
+      severity: "high"
+      description: "IP bannie par fail2ban"
+
+# Intrusion Detection
+intrusion_detection:
+  enabled: true
+
+  # Seuils de detection
+  failed_login_threshold: 5      # Alerter apres X echecs
+  failed_login_window: 300       # Fenetre de temps en secondes
+
+  port_scan_threshold: 20        # Connexions differentes ports
+  port_scan_window: 60           # Fenetre de temps
+
+  # IPs en whitelist (ne jamais alerter)
+  whitelist:
+    - "127.0.0.1"
+    - "::1"
+
+  # Ports critiques a surveiller
+  critical_ports:
+    - 22    # SSH
+    - 80    # HTTP
+    - 443   # HTTPS
+    - 3306  # MySQL
+    - 5432  # PostgreSQL
+    - 6379  # Redis
+    - 27017 # MongoDB
+
+# Logging local
+logging:
+  enabled: true
+  log_dir: "/var/log/soc-logger"
+  max_size_mb: 100
+  backup_count: 5
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+# Notifications
+notifications:
+  # Envoyer un rapport quotidien
+  daily_report: true
+  daily_report_time: "08:00"
+
+  # Cooldown entre alertes similaires (secondes)
+  alert_cooldown: 300
+
+  # Regrouper les alertes similaires
+  batch_alerts: true
+  batch_window: 60
+
+# Health Check
+health:
+  enabled: true
+  # Envoyer un heartbeat toutes les X minutes
+  heartbeat_interval: 60
+  # Services a verifier
+  check_services:
+    - sshd
+    - nginx
+    - fail2ban
