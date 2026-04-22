@@ -40,9 +40,10 @@ class BaseGenerator(ABC):
     # ------------------------------------------------------------------ #
     # Metadata — override in each subclass
     # ------------------------------------------------------------------ #
-    MODEL_ID:     str = ""
-    DISPLAY_NAME: str = ""
-    VRAM_GB:      int = 0   # Minimum recommended VRAM (in GB)
+    MODEL_ID:      str  = ""
+    DISPLAY_NAME:  str  = ""
+    VRAM_GB:       int  = 0    # Minimum recommended VRAM (in GB)
+    supports_text: bool = False  # True if generate_from_text() is implemented
 
     def __init__(self, model_dir: Path, outputs_dir: Path) -> None:
         self.model_dir         = model_dir
@@ -51,20 +52,14 @@ class BaseGenerator(ABC):
         # Injected by the registry from the manifest
         self.hf_repo:          str  = ""
         self.hf_skip_prefixes: list = []
-        self.download_check:   str  = ""   # relative path to check in model_dir
-        self._params_schema:   list = []   # params declared in the manifest
+        self.download_check:   str  = ""
+        self._params_schema:   list = []
 
     # ------------------------------------------------------------------ #
     # Model lifecycle
     # ------------------------------------------------------------------ #
 
     def is_downloaded(self) -> bool:
-        """
-        Checks that model files are present on disk.
-        Uses download_check from the manifest if available,
-        otherwise checks that model_dir exists and is non-empty.
-        Can be overridden in generator.py for custom logic.
-        """
         if self.download_check:
             return (self.model_dir / self.download_check).exists()
         return self.model_dir.exists() and any(self.model_dir.iterdir())
@@ -85,10 +80,8 @@ class BaseGenerator(ABC):
                 torch.cuda.empty_cache()
         except ImportError:
             pass
-        # Force the OS to reclaim unused memory from this process
         try:
-            import ctypes
-            import sys
+            import ctypes, sys
             if sys.platform == "win32":
                 kernel32 = ctypes.windll.kernel32
                 kernel32.SetProcessWorkingSetSizeEx(
@@ -101,7 +94,7 @@ class BaseGenerator(ABC):
         return self._model is not None
 
     # ------------------------------------------------------------------ #
-    # Inference
+    # Inference — image-to-3D (required)
     # ------------------------------------------------------------------ #
 
     @abstractmethod
@@ -113,12 +106,36 @@ class BaseGenerator(ABC):
         cancel_event: Optional[threading.Event] = None,
     ) -> Path:
         """
-        Starts 3D generation from an image.
+        Generate a 3D mesh from an image.
         Returns the path to the generated .glb file.
         progress_cb(percent: int, step_label: str)
-        cancel_event: set this to interrupt generation between steps.
         """
         ...
+
+    # ------------------------------------------------------------------ #
+    # Inference — text-to-3D (optional)
+    # ------------------------------------------------------------------ #
+
+    def generate_from_text(
+        self,
+        prompt: str,
+        params: dict,
+        progress_cb: Optional[Callable[[int, str], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> Path:
+        """
+        Generate a 3D mesh from a text prompt.
+        Override in subclasses that support text-to-3D.
+        Raises NotImplementedError by default.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support text-to-3D generation. "
+            "Install a compatible text-to-3D extension."
+        )
+
+    # ------------------------------------------------------------------ #
+    # Cancellation helper
+    # ------------------------------------------------------------------ #
 
     def _check_cancelled(self, cancel_event: Optional[threading.Event]) -> None:
         """Raises GenerationCancelled if cancel_event is set."""
@@ -130,22 +147,19 @@ class BaseGenerator(ABC):
     # ------------------------------------------------------------------ #
 
     def params_schema(self) -> list:
-        """
-        Returns the parameter schema for the UI.
-        Reads _params_schema injected from the manifest.
-        Can be overridden in generator.py for custom logic.
-        """
         return self._params_schema
 
     # ------------------------------------------------------------------ #
-    # Standard download
+    # Download with progress
     # ------------------------------------------------------------------ #
 
-    def _auto_download(self) -> None:
+    def _auto_download(
+        self,
+        progress_cb: Optional[Callable[[int, str], None]] = None,
+    ) -> None:
         """
         Downloads weights from self.hf_repo (injected by the registry).
-        Used as a fallback when is_downloaded() returns False.
-        Extensions can override this method for custom logic.
+        Optionally reports progress via progress_cb.
         """
         if not self.hf_repo:
             raise RuntimeError(
@@ -156,6 +170,9 @@ class BaseGenerator(ABC):
         from huggingface_hub import snapshot_download
 
         print(f"[{self.__class__.__name__}] Downloading {self.hf_repo} → {self.model_dir} …")
+        if progress_cb:
+            progress_cb(0, f"Downloading {self.DISPLAY_NAME or self.MODEL_ID}…")
+
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
         ignore = list(self.hf_skip_prefixes) + [
@@ -167,6 +184,8 @@ class BaseGenerator(ABC):
             ignore_patterns=ignore,
         )
         print(f"[{self.__class__.__name__}] Download complete.")
+        if progress_cb:
+            progress_cb(10, "Download complete, loading…")
 
     # ------------------------------------------------------------------ #
     # Helpers

@@ -1,11 +1,10 @@
 """
 Text-to-3D generation endpoint.
-Mirrors the image generation flow but accepts a text prompt.
-Requires a compatible extension that implements generate_from_text().
+Requires a generator that sets supports_text = True and implements generate_from_text().
+Install a compatible extension (e.g. shap-e) via the Extensions page.
 """
 import asyncio
 import logging
-import threading
 import traceback
 import uuid
 from typing import Dict
@@ -20,15 +19,23 @@ from schemas.generation import JobStatus
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["text-generation"])
 
-_jobs: Dict[str, JobStatus] = {}
-_cancelled: set = set()
+_jobs:      Dict[str, JobStatus] = {}
+_cancelled: set                  = set()
 
+
+# ------------------------------------------------------------------ #
+# Request schema
+# ------------------------------------------------------------------ #
 
 class TextPromptRequest(BaseModel):
-    prompt: str
-    style: str = "realistic"
+    prompt:  str
+    style:   str = "realistic"
     quality: str = "standard"
 
+
+# ------------------------------------------------------------------ #
+# Routes
+# ------------------------------------------------------------------ #
 
 @router.post("/from-prompt")
 async def generate_from_prompt(req: TextPromptRequest):
@@ -38,21 +45,17 @@ async def generate_from_prompt(req: TextPromptRequest):
     if req.quality not in ("draft", "standard", "hd"):
         raise HTTPException(400, "quality must be 'draft', 'standard', or 'hd'")
 
-    # Check that at least one generator supports text-to-3D
-    has_text_generator = any(
-        hasattr(gen, "generate_from_text")
-        for gen in generator_registry._generators.values()
-    )
-    if not has_text_generator:
+    capable = generator_registry.text_capable_ids()
+    if not capable:
         raise HTTPException(
             400,
-            "No text-to-3D model installed. Install a compatible extension from the "
-            "Extensions page (e.g. search for 'text-to-3d' on GitHub)."
+            "No text-to-3D model installed. "
+            "Go to Extensions and install a compatible extension "
+            "(e.g. lightningpixel/modly-shap-e) to enable text-to-3D generation."
         )
 
-    job_id = str(uuid.uuid4())
-    job    = JobStatus(job_id=job_id, status="pending", progress=0)
-    _jobs[job_id] = job
+    job_id        = str(uuid.uuid4())
+    _jobs[job_id] = JobStatus(job_id=job_id, status="pending", progress=0)
 
     asyncio.create_task(
         _run_text_generation(job_id, req.prompt, req.style, req.quality)
@@ -79,10 +82,20 @@ async def cancel_text_job(job_id: str):
     return {"cancelled": True}
 
 
+@router.get("/capable")
+async def list_text_capable():
+    """Returns a list of installed generators that support text-to-3D."""
+    return {"capable": generator_registry.text_capable_ids()}
+
+
+# ------------------------------------------------------------------ #
+# Background task
+# ------------------------------------------------------------------ #
+
 async def _run_text_generation(
     job_id: str, prompt: str, style: str, quality: str
 ) -> None:
-    job = _jobs[job_id]
+    job        = _jobs[job_id]
     job.status = "running"
 
     def progress_cb(pct: int, step: str = "") -> None:
@@ -93,17 +106,11 @@ async def _run_text_generation(
     try:
         loop = asyncio.get_running_loop()
 
-        # Find a generator that supports text-to-3D
-        gen = None
-        for candidate in generator_registry._generators.values():
-            if hasattr(candidate, "generate_from_text"):
-                gen = candidate
-                break
-
+        # Resolve generator — load it (download weights if needed)
+        progress_cb(0, "Loading text-to-3D model…")
+        gen = await loop.run_in_executor(None, generator_registry.get_text_generator)
         if gen is None:
-            raise RuntimeError(
-                "No text-to-3D model available. Install a compatible extension."
-            )
+            raise RuntimeError("No text-to-3D model available.")
 
         if job_id in _cancelled:
             return
@@ -113,7 +120,7 @@ async def _run_text_generation(
         gen.outputs_dir = coll_dir
 
         params = {"style": style, "quality": quality}
-        progress_cb(5, f"Generating from prompt…")
+        progress_cb(10, f"Generating from prompt…")
 
         output_path = await loop.run_in_executor(
             None,
@@ -140,3 +147,5 @@ async def _run_text_generation(
         logger.error("[TextGeneration ERROR] %s\n%s", exc, tb)
         job.status = "error"
         job.error  = str(exc)
+    finally:
+        _cancelled.discard(job_id)

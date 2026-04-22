@@ -9,13 +9,16 @@ No other file needs to be modified.
 """
 import importlib.util
 import json
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from services.generators.base import BaseGenerator
 from services.extension_process import ExtensionProcess, _venv_python
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------ #
 # Global paths
@@ -29,30 +32,27 @@ WORKSPACE_DIR = Path(_workspace_dir_raw)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
 
-# extensions/ folder — in userData (passed by Electron via EXTENSIONS_DIR)
 _extensions_dir_raw = os.environ.get("EXTENSIONS_DIR", "")
 EXTENSIONS_DIR = Path(_extensions_dir_raw) if _extensions_dir_raw else None
 
-print(f"[Registry] MODELS_DIR     = {MODELS_DIR}")
-print(f"[Registry] WORKSPACE_DIR  = {WORKSPACE_DIR}")
-print(f"[Registry] EXTENSIONS_DIR = {EXTENSIONS_DIR or '(not set)'}")
+logger.info("MODELS_DIR     = %s", MODELS_DIR)
+logger.info("WORKSPACE_DIR  = %s", WORKSPACE_DIR)
+logger.info("EXTENSIONS_DIR = %s", EXTENSIONS_DIR or "(not set)")
 
 
 # ------------------------------------------------------------------ #
 # Extension loader
 # ------------------------------------------------------------------ #
 
-def _discover_extensions() -> Dict[str, Tuple[type, dict]]:
+def _discover_extensions() -> Dict[str, Tuple[type, dict, Path]]:
     """
     Scans EXTENSIONS_DIR to find valid extensions.
-    Each extension must have manifest.json + generator.py.
-    Returns {full_id: (GeneratorClass, node_manifest, ext_dir)}
-    where full_id is "ext_id/node_id".
+    Returns {full_id: (GeneratorClass_or_None, manifest, ext_dir)}.
     """
-    result: Dict[str, Tuple[type, dict]] = {}
+    result: Dict[str, Tuple[type, dict, Path]] = {}
 
     if EXTENSIONS_DIR is None or not EXTENSIONS_DIR.exists():
-        print(f"[Registry] WARNING: EXTENSIONS_DIR not set or not found: {EXTENSIONS_DIR}")
+        logger.warning("EXTENSIONS_DIR not set or not found: %s", EXTENSIONS_DIR)
         return result
 
     for ext_dir in sorted(EXTENSIONS_DIR.iterdir()):
@@ -63,10 +63,10 @@ def _discover_extensions() -> Dict[str, Tuple[type, dict]]:
         generator_path = ext_dir / "generator.py"
 
         if not manifest_path.exists():
-            print(f"[Registry] Skipping '{ext_dir.name}': missing manifest.json")
+            logger.debug("Skipping '%s': missing manifest.json", ext_dir.name)
             continue
         if not generator_path.exists():
-            print(f"[Registry] Skipping '{ext_dir.name}': missing generator.py")
+            logger.debug("Skipping '%s': missing generator.py", ext_dir.name)
             continue
 
         try:
@@ -76,10 +76,6 @@ def _discover_extensions() -> Dict[str, Tuple[type, dict]]:
 
             nodes = [n for n in manifest.get("nodes", []) if n.get("id")]
 
-            # --- Subprocess mode (new): venv present → use ExtensionProcess ---
-            # Also force subprocess mode for extensions that ship a build_vendor.py
-            # but whose vendor/ directory hasn't been built yet: this surfaces a
-            # loadError in the UI (Repair button) so the user can run setup.py.
             has_venv         = _venv_python(ext_dir).exists()
             has_build_vendor = (ext_dir / "build_vendor.py").exists()
             vendor_built     = (ext_dir / "vendor").exists()
@@ -87,7 +83,6 @@ def _discover_extensions() -> Dict[str, Tuple[type, dict]]:
 
             cls_or_None = None
             if not subprocess_mode:
-                # --- Direct mode (legacy): no venv → load generator.py directly ---
                 module_name = f"extensions.{ext_id}.generator"
                 spec   = importlib.util.spec_from_file_location(module_name, generator_path)
                 module = importlib.util.module_from_spec(spec)
@@ -112,26 +107,15 @@ def _discover_extensions() -> Dict[str, Tuple[type, dict]]:
                     }
                     full_id = f"{ext_id}/{node['id']}"
                     result[full_id] = (cls_or_None, node_manifest, ext_dir)
-                    if subprocess_mode:
-                        if has_venv:
-                            print(f"[Registry] Loaded subprocess node: {full_id}")
-                        else:
-                            print(f"[Registry] Node '{full_id}' needs setup (venv missing)")
-                    else:
-                        print(f"[Registry] Loaded node: {full_id} ({class_name})")
+                    mode_label = "subprocess" if subprocess_mode else "direct"
+                    logger.info("Loaded %s node: %s", mode_label, full_id)
             else:
-                # No nodes defined — register by ext_id as fallback
                 result[ext_id] = (cls_or_None, manifest, ext_dir)
-                if subprocess_mode:
-                    if has_venv:
-                        print(f"[Registry] Loaded subprocess extension: {ext_id}")
-                    else:
-                        print(f"[Registry] Extension '{ext_id}' needs setup (venv missing)")
-                else:
-                    print(f"[Registry] Loaded extension: {ext_id} ({class_name})")
+                mode_label = "subprocess" if subprocess_mode else "direct"
+                logger.info("Loaded %s extension: %s", mode_label, ext_id)
 
         except Exception as exc:
-            print(f"[Registry] ERROR loading extension '{ext_dir.name}': {exc}")
+            logger.error("Failed to load extension '%s': %s", ext_dir.name, exc)
 
     return result
 
@@ -147,74 +131,103 @@ class GeneratorRegistry:
         self._errors:     Dict[str, str]           = {}
         self._active_id:  str = os.environ.get("SELECTED_MODEL_ID", "sf3d")
 
+    # ------------------------------------------------------------------ #
+    # Initialisation / reload
+    # ------------------------------------------------------------------ #
+
     def initialize(self) -> None:
         """Discovers and instantiates all extensions. Call at startup."""
         extensions = _discover_extensions()
 
-        for model_id, entry in extensions.items():
-            cls, manifest, ext_dir = entry
-            try:
-                if cls is None:
-                    # Subprocess mode: venv must exist
-                    if not _venv_python(ext_dir).exists():
-                        raise RuntimeError(
-                            "venv not found — extension needs setup. "
-                            "Click 'Repair' on the Models page to run setup.py."
-                        )
-                    # Subprocess mode: wrap in ExtensionProcess
-                    gen = ExtensionProcess(ext_dir, manifest)
-                    gen.model_dir   = MODELS_DIR / model_id
-                    gen.outputs_dir = WORKSPACE_DIR
-                else:
-                    # Legacy direct mode
-                    gen = cls(MODELS_DIR / model_id, WORKSPACE_DIR)
-                    gen.hf_repo          = manifest.get("hf_repo", "")
-                    gen.hf_skip_prefixes = manifest.get("hf_skip_prefixes", [])
-                    gen.download_check   = manifest.get("download_check", "")
-                    gen._params_schema   = manifest.get("params_schema", [])
-
-                self._generators[model_id] = gen
-                self._manifests[model_id]  = manifest
-                self._errors.pop(model_id, None)
-            except Exception as exc:
-                msg = f"Failed to instantiate generator '{model_id}': {exc}"
-                print(f"[Registry] ERROR: {msg}")
-                self._errors[model_id] = msg
+        for model_id, (cls, manifest, ext_dir) in extensions.items():
+            self._load_extension(model_id, cls, manifest, ext_dir)
 
         if not self._generators:
-            print("[Registry] WARNING: No extensions found.")
+            logger.warning("No extensions found.")
             return
 
         if self._active_id not in self._generators:
             fallback = next(iter(self._generators))
-            print(
-                f"[Registry] WARNING: SELECTED_MODEL_ID='{self._active_id}' is unknown. "
-                f"Falling back to '{fallback}'."
+            logger.warning(
+                "SELECTED_MODEL_ID='%s' is unknown — falling back to '%s'.",
+                self._active_id, fallback,
             )
             self._active_id = fallback
 
-        print(f"[Registry] Active model  : {self._active_id}")
-        print(f"[Registry] All models    : {list(self._generators.keys())}")
+        logger.info("Active model : %s", self._active_id)
+        logger.info("All models   : %s", list(self._generators.keys()))
+
+    def _load_extension(
+        self,
+        model_id: str,
+        cls: Optional[type],
+        manifest: dict,
+        ext_dir: Path,
+    ) -> None:
+        try:
+            if cls is None:
+                if not _venv_python(ext_dir).exists():
+                    raise RuntimeError(
+                        "venv not found — extension needs setup. "
+                        "Click 'Repair' on the Extensions page to run setup.py."
+                    )
+                gen = ExtensionProcess(ext_dir, manifest)
+                gen.model_dir   = MODELS_DIR / model_id
+                gen.outputs_dir = WORKSPACE_DIR
+            else:
+                gen = cls(MODELS_DIR / model_id, WORKSPACE_DIR)
+                gen.hf_repo          = manifest.get("hf_repo", "")
+                gen.hf_skip_prefixes = manifest.get("hf_skip_prefixes", [])
+                gen.download_check   = manifest.get("download_check", "")
+                gen._params_schema   = manifest.get("params_schema", [])
+
+            self._generators[model_id] = gen
+            self._manifests[model_id]  = manifest
+            self._errors.pop(model_id, None)
+        except Exception as exc:
+            msg = str(exc)
+            logger.error("Failed to instantiate '%s': %s", model_id, msg)
+            self._errors[model_id] = msg
 
     def reload(self) -> None:
-        """
-        Re-scans extensions and updates the registry without restarting FastAPI.
-        Unloads all current generators before reloading.
-        """
-        print("[Registry] Reloading extensions…")
-        for gen in self._generators.values():
-            try:
-                gen.unload()
-            except Exception:
-                pass
+        """Re-scans all extensions and updates the registry hot."""
+        logger.info("Reloading all extensions…")
+        self.unload_all()
         self._generators.clear()
         self._manifests.clear()
         self._errors.clear()
         self.initialize()
-        print("[Registry] Reload complete.")
+        logger.info("Reload complete.")
+
+    def reload_single(self, ext_id: str) -> None:
+        """
+        Reloads a single extension by its ID without touching others.
+        Useful after a Repair or manual update of one extension.
+        """
+        logger.info("Reloading single extension: %s", ext_id)
+        if ext_id in self._generators:
+            try:
+                gen = self._generators[ext_id]
+                if isinstance(gen, ExtensionProcess):
+                    gen.stop()
+                else:
+                    gen.unload()
+            except Exception:
+                pass
+            del self._generators[ext_id]
+            self._manifests.pop(ext_id, None)
+            self._errors.pop(ext_id, None)
+
+        extensions = _discover_extensions()
+        entry = extensions.get(ext_id)
+        if entry is None:
+            logger.warning("Extension '%s' not found after reload.", ext_id)
+            return
+        cls, manifest, ext_dir = entry
+        self._load_extension(ext_id, cls, manifest, ext_dir)
+        logger.info("Extension '%s' reloaded.", ext_id)
 
     def load_errors(self) -> Dict[str, str]:
-        """Returns extension loading errors."""
         return dict(self._errors)
 
     # ------------------------------------------------------------------ #
@@ -226,12 +239,7 @@ class GeneratorRegistry:
         gen = self._generators[self._active_id]
         if not gen.is_loaded():
             if not gen.is_downloaded():
-                if isinstance(gen, ExtensionProcess):
-                    # Let the subprocess handle its own download logic during
-                    # load() — some extensions (e.g. mv-adapter) need custom
-                    # multi-repo downloads that the standard HF endpoint can't do.
-                    pass
-                else:
+                if not isinstance(gen, ExtensionProcess):
                     gen._auto_download()
             gen.load()
         return gen
@@ -245,7 +253,6 @@ class GeneratorRegistry:
         return self._generators[model_id]
 
     def get_manifest(self, model_id: str) -> dict:
-        """Returns the manifest of an extension."""
         if model_id not in self._manifests:
             raise KeyError(f"No manifest for model ID: '{model_id}'")
         return self._manifests[model_id]
@@ -261,6 +268,43 @@ class GeneratorRegistry:
             if self._active_id in self._generators:
                 self._generators[self._active_id].unload()
             self._active_id = model_id
+
+    # ------------------------------------------------------------------ #
+    # Text-to-3D helpers
+    # ------------------------------------------------------------------ #
+
+    def text_capable_ids(self) -> List[str]:
+        """
+        Returns the IDs of generators that support text-to-3D (generate_from_text).
+        Works for both direct generators (checks supports_text attribute) and
+        subprocess generators (checks manifest 'supports_text' flag).
+        """
+        result = []
+        for model_id, gen in self._generators.items():
+            manifest = self._manifests.get(model_id, {})
+            # Direct generators: check class attribute
+            if hasattr(gen, "supports_text") and gen.supports_text:
+                result.append(model_id)
+                continue
+            # Subprocess generators: check manifest flag
+            if manifest.get("supports_text", False):
+                result.append(model_id)
+        return result
+
+    def get_text_generator(self) -> Optional[BaseGenerator]:
+        """
+        Returns the first available text-to-3D generator, or None.
+        The generator is loaded (downloaded + loaded into GPU) on first call.
+        """
+        ids = self.text_capable_ids()
+        if not ids:
+            return None
+        gen = self._generators[ids[0]]
+        if not gen.is_loaded():
+            if not gen.is_downloaded() and not isinstance(gen, ExtensionProcess):
+                gen._auto_download()
+            gen.load()
+        return gen
 
     # ------------------------------------------------------------------ #
     # Status
@@ -281,16 +325,17 @@ class GeneratorRegistry:
         for model_id, gen in self._generators.items():
             manifest = self._manifests[model_id]
             result.append({
-                "id":          model_id,
-                "name":        manifest.get("name", gen.DISPLAY_NAME),
-                "description": manifest.get("description", ""),
-                "version":     manifest.get("version", ""),
-                "vram_gb":     manifest.get("vram_gb", gen.VRAM_GB),
-                "hf_repo":     manifest.get("hf_repo", ""),
-                "tags":        manifest.get("tags", []),
-                "downloaded":  gen.is_downloaded(),
-                "loaded":      gen.is_loaded(),
-                "active":      model_id == self._active_id,
+                "id":            model_id,
+                "name":          manifest.get("name", gen.DISPLAY_NAME),
+                "description":   manifest.get("description", ""),
+                "version":       manifest.get("version", ""),
+                "vram_gb":       manifest.get("vram_gb", gen.VRAM_GB),
+                "hf_repo":       manifest.get("hf_repo", ""),
+                "tags":          manifest.get("tags", []),
+                "supports_text": manifest.get("supports_text", getattr(gen, "supports_text", False)),
+                "downloaded":    gen.is_downloaded(),
+                "loaded":        gen.is_loaded(),
+                "active":        model_id == self._active_id,
             })
         return result
 
@@ -304,7 +349,11 @@ class GeneratorRegistry:
     # Paths update & shutdown
     # ------------------------------------------------------------------ #
 
-    def update_paths(self, models_dir: Optional[Path], workspace_dir: Optional[Path]) -> None:
+    def update_paths(
+        self,
+        models_dir: Optional[Path],
+        workspace_dir: Optional[Path],
+    ) -> None:
         global MODELS_DIR, WORKSPACE_DIR
         import services.generator_registry as _self_module
 
@@ -323,10 +372,13 @@ class GeneratorRegistry:
 
     def unload_all(self) -> None:
         for gen in self._generators.values():
-            if isinstance(gen, ExtensionProcess):
-                gen.stop()
-            else:
-                gen.unload()
+            try:
+                if isinstance(gen, ExtensionProcess):
+                    gen.stop()
+                else:
+                    gen.unload()
+            except Exception as exc:
+                logger.warning("Error unloading generator: %s", exc)
 
 
 # Singleton

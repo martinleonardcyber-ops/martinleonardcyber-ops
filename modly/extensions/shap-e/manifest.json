@@ -1,0 +1,50 @@
+{
+  "id": "shap-e",
+  "name": "Shap-E (Text to 3D)",
+  "description": "OpenAI's open-source text-to-3D and image-to-3D model. Generates 3D shapes from text prompts or images using implicit neural representations. Runs fully locally on your GPU.",
+  "version": "1.0.0",
+  "author": "OpenAI (extension by Modly)",
+  "license": "MIT",
+  "generator_class": "ShapEGenerator",
+  "type": "model",
+  "input": "text",
+  "output": "mesh",
+  "supports_text": true,
+  "vram_gb": 6,
+  "tags": ["text-to-3d", "image-to-3d", "openai", "fast"],
+  "hf_repo": "openai/shap-e",
+  "hf_skip_prefixes": ["*.md", "LICENSE"],
+  "download_check": "transmitter.pt",
+  "params_schema": [
+    {
+      "id": "guidance_scale",
+      "label": "Guidance scale",
+      "type": "float",
+      "default": 15.0,
+      "min": 3.0,
+      "max": 25.0,
+      "tooltip": "Higher = prompt more strictly followed. 15 is a good default."
+    },
+    {
+      "id": "num_steps",
+      "label": "Diffusion steps",
+      "type": "int",
+      "default": 64,
+      "min": 32,
+      "max": 128,
+      "tooltip": "More steps = better quality but slower. 64 is balanced."
+    },
+    {
+      "id": "render_size",
+      "label": "Render size",
+      "type": "select",
+      "default": 128,
+      "options": [
+        { "value": 64,  "label": "64 px — Draft" },
+        { "value": 128, "label": "128 px — Standard" },
+        { "value": 256, "label": "256 px — HD" }
+      ],
+      "tooltip": "Resolution used internally for the NeRF rendering pass."
+    }
+  ]
+}
