@@ -1,0 +1,16 @@
+# Hunyuan3D 2.0 extension dependencies
+# The hy3dgen package is installed from the official GitHub repo.
+
+torch>=2.1.0
+torchvision>=0.16.0
+Pillow>=10.0.0
+trimesh>=4.0.0
+numpy>=1.24.0
+diffusers>=0.27.0
+transformers>=4.40.0
+accelerate>=0.30.0
+einops>=0.7.0
+omegaconf>=2.3.0
+rembg>=2.0.50
+huggingface_hub>=0.22.0
+git+https://github.com/Tencent/Hunyuan3D-2.git

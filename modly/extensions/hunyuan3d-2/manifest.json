@@ -1,0 +1,52 @@
+{
+  "id": "hunyuan3d-2",
+  "name": "Hunyuan3D 2.0 (Image → 3D + PBR Textures)",
+  "description": "Tencent's state-of-the-art image-to-3D model (2024). Generates high-fidelity meshes with full PBR texture maps (albedo, roughness, normal). Best quality available locally — rivals cloud tools like Meshy.",
+  "version": "1.0.0",
+  "author": "Tencent (extension by Modly)",
+  "license": "Tencent Hunyuan Community License",
+  "generator_class": "Hunyuan3Dv2Generator",
+  "type": "model",
+  "input": "image",
+  "output": "mesh",
+  "supports_text": false,
+  "vram_gb": 12,
+  "tags": ["image-to-3d", "textures", "pbr", "tencent", "high-quality", "2024"],
+  "hf_repo": "tencent/Hunyuan3D-2",
+  "hf_skip_prefixes": ["*.md", "LICENSE", "*.png", "*.jpg", "assets/"],
+  "download_check": "hunyuan3d-dit-v2-0",
+  "params_schema": [
+    {
+      "id": "num_steps",
+      "label": "Diffusion steps",
+      "type": "int",
+      "default": 50,
+      "min": 20,
+      "max": 100,
+      "tooltip": "More steps = better quality but slower. 50 is a good balance."
+    },
+    {
+      "id": "guidance_scale",
+      "label": "Guidance scale",
+      "type": "float",
+      "default": 7.5,
+      "min": 3.0,
+      "max": 15.0,
+      "tooltip": "How strictly the model follows the input image."
+    },
+    {
+      "id": "texture",
+      "label": "PBR Textures",
+      "type": "bool",
+      "default": true,
+      "tooltip": "Generate full PBR textures (albedo, roughness, normal). Requires ~4 GB extra VRAM. Disable on low VRAM GPUs."
+    },
+    {
+      "id": "remove_bg",
+      "label": "Auto remove background",
+      "type": "bool",
+      "default": true,
+      "tooltip": "Automatically remove the image background before processing. Strongly recommended for best results."
+    }
+  ]
+}
