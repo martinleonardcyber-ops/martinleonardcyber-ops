@@ -5,10 +5,72 @@ import type { AnyExtension, ModelExtension } from '@shared/types/electron.d'
 import { formatModelName } from './utils'
 import { ExtensionCard } from './components/ExtensionCard'
 import type { ExtensionNode } from './components/ExtensionCard'
+import { useHardware } from '@shared/hooks/useHardware'
+import type { HardwareInfo } from '@shared/hooks/useHardware'
+
+// ─── Hardware banner ──────────────────────────────────────────────────────────
+
+function HardwareBanner({ info }: { info: HardwareInfo }) {
+  const tier = info.recommended_tier
+
+  const tierColor = {
+    none: 'from-zinc-900/80 border-zinc-700/40',
+    low:  'from-amber-950/40 border-amber-800/30',
+    mid:  'from-blue-950/40  border-blue-800/30',
+    high: 'from-emerald-950/40 border-emerald-800/30',
+  }[tier]
+
+  const dot = {
+    none: 'bg-zinc-500',
+    low:  'bg-amber-400',
+    mid:  'bg-blue-400',
+    high: 'bg-emerald-400',
+  }[tier]
+
+  return (
+    <div className={`flex items-center gap-4 px-4 py-3 rounded-xl border bg-gradient-to-r ${tierColor} to-transparent mb-4`}>
+      {/* GPU icon */}
+      <div className="shrink-0 w-8 h-8 rounded-lg bg-zinc-800/80 border border-zinc-700/40 flex items-center justify-center">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300">
+          <rect x="2" y="6" width="20" height="12" rx="2"/>
+          <path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/>
+          <path d="M6 2v4M18 2v4M6 18v4M18 18v4"/>
+        </svg>
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+          <p className="text-xs font-semibold text-zinc-200 truncate">
+            {info.gpu_name ?? 'No GPU detected'}
+          </p>
+          {info.cuda_available && (
+            <span className="shrink-0 text-[10px] font-mono text-zinc-500 bg-zinc-800/60 border border-zinc-700/40 px-1.5 py-0.5 rounded">
+              {info.vram_total_gb} GB VRAM
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{info.recommended_tier_label}</p>
+      </div>
+
+      {/* RAM chip */}
+      {info.ram_gb > 0 && (
+        <div className="shrink-0 text-right hidden sm:block">
+          <p className="text-[10px] text-zinc-600">System RAM</p>
+          <p className="text-[11px] font-mono text-zinc-400">{info.ram_gb} GB</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ModelsPage(): JSX.Element {
+  // Hardware detection
+  const { info: hwInfo, compatibility } = useHardware()
+
   // Extensions store
   const modelExtensions   = useExtensionsStore((s) => s.modelExtensions)
   const processExtensions = useExtensionsStore((s) => s.processExtensions)
@@ -22,11 +84,20 @@ export default function ModelsPage(): JSX.Element {
   const reloadExtensions  = useExtensionsStore((s) => s.reload)
   const clearInstall      = useExtensionsStore((s) => s.clearInstallState)
 
-  // All extensions (model + process), sorted builtin-first then by name
+  // Compatibility rank: recommended > ok > warning > unknown > incompatible
+  const compatRank = (ext: AnyExtension): number => {
+    if (ext.type !== 'model') return 2
+    const c = compatibility(ext.vram_gb ?? 0)
+    return { recommended: 0, ok: 1, warning: 2, unknown: 3, incompatible: 4 }[c] ?? 3
+  }
+
+  // All extensions sorted: compatible first, then builtin, then name
   const allExtensions: AnyExtension[] = [
     ...modelExtensions,
     ...processExtensions,
   ].sort((a, b) => {
+    const rankDiff = compatRank(a) - compatRank(b)
+    if (rankDiff !== 0) return rankDiff
     if (a.builtin !== b.builtin) return a.builtin ? -1 : 1
     return a.name.localeCompare(b.name)
   })
@@ -303,6 +374,8 @@ export default function ModelsPage(): JSX.Element {
 
       {/* ── Extensions list ──────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-6">
+        {/* Hardware banner */}
+        {hwInfo && <HardwareBanner info={hwInfo} />}
         {allExtensions.length === 0 && !extLoading ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/20">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" className="text-zinc-700">
@@ -337,6 +410,7 @@ export default function ModelsPage(): JSX.Element {
                 installedIds={installedVariantIds}
                 downloading={downloading}
                 disabled={isBusy}
+                compatibility={ext.type === 'model' ? compatibility(ext.vram_gb ?? 0) : 'ok'}
                 loadError={
                   loadErrors[ext.id] ??
                   ext.nodes.map((n) => loadErrors[`${ext.id}/${n.id}`]).find(Boolean)

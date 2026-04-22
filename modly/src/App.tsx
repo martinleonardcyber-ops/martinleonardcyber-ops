@@ -4,11 +4,13 @@ import FirstRunSetup from '@areas/setup/FirstRunSetup'
 import MainLayout from '@shared/components/layout/MainLayout'
 import { UpdateModal } from '@shared/components/ui/UpdateModal'
 import { ErrorModal } from '@shared/components/ui/ErrorModal'
+import { OnboardingWizard, useOnboardingRequired } from '@shared/components/onboarding/OnboardingWizard'
 
 export default function App(): JSX.Element {
   const { checkSetup, setupStatus, initApp, backendStatus, showError } = useAppStore()
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [currentVersion, setCurrentVersion] = useState<string>('')
+  const showOnboarding = useOnboardingRequired()
 
   useEffect(() => {
     checkSetup()
@@ -34,6 +36,7 @@ export default function App(): JSX.Element {
   if (backendStatus === 'ready') return (
     <>
       <MainLayout />
+      {showOnboarding && <OnboardingWizard />}
       {updateVersion && (
         <UpdateModal
           currentVersion={currentVersion}

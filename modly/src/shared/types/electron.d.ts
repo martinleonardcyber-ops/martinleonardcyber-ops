@@ -25,6 +25,7 @@ export interface ModelExtension {
   trusted:      boolean
   builtin:      boolean
   source?:      string
+  vram_gb:      number
   nodes:        ExtensionNode[]
 }
 

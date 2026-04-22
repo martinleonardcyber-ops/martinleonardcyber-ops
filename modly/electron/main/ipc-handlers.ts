@@ -523,6 +523,7 @@ export function setupIpcHandlers(pythonBridge: PythonBridge, getWindow: WindowGe
     id?: string; name?: string; displayName?: string; version?: string
     description?: string; author?: string | { name?: string }
     source?: string; generator_class?: string
+    vram_gb?: number
     // extension type
     type?:  'model' | 'process'
     entry?: string
@@ -549,6 +550,7 @@ export function setupIpcHandlers(pythonBridge: PythonBridge, getWindow: WindowGe
       trusted:     builtin || isTrustedSource(parsed.source, trustedRepos),
       source:      parsed.source,
       builtin,
+      vram_gb:     parsed.vram_gb ?? 0,
     }
 
     const nodes = (parsed.nodes ?? []).map(n => ({

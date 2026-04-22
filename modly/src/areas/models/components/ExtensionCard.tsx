@@ -3,12 +3,15 @@ import type { AnyExtension } from '@shared/types/electron.d'
 export type { AnyExtension as Extension }
 export type { ExtensionNode } from '@shared/types/electron.d'
 
+type CompatLevel = 'recommended' | 'ok' | 'warning' | 'incompatible' | 'unknown'
+
 interface Props {
   ext:              AnyExtension
   installedIds:     string[]
   downloading:      Record<string, { percent: number; file?: string; fileIndex?: number; totalFiles?: number }>
   loadError?:       string
   disabled?:        boolean
+  compatibility?:   CompatLevel
   onInstall:        (node: import('@shared/types/electron.d').ExtensionNode, fullId: string) => void
   onUninstall:      (extId: string) => void
   onUninstallNode?: (fullId: string) => void
@@ -20,11 +23,65 @@ const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
   process: { label: 'Process', cls: 'bg-emerald-500/15 border-emerald-500/25 text-emerald-400' },
 }
 
-export function ExtensionCard({ ext, installedIds, downloading, loadError, disabled, onInstall, onUninstall, onUninstallNode, onRepaired }: Props): JSX.Element {
+const COMPAT_CONFIG: Record<CompatLevel, { label: string; cls: string; icon: string }> = {
+  recommended: {
+    label: 'Recommended',
+    cls:   'bg-emerald-500/10 border-emerald-500/25 text-emerald-400',
+    icon:  'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  ok: {
+    label: 'Compatible',
+    cls:   'bg-blue-500/10 border-blue-500/25 text-blue-400',
+    icon:  'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  warning: {
+    label: 'May work',
+    cls:   'bg-amber-500/10 border-amber-500/25 text-amber-400',
+    icon:  'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+  },
+  incompatible: {
+    label: 'Needs more VRAM',
+    cls:   'bg-red-500/10 border-red-500/25 text-red-400',
+    icon:  'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  unknown: {
+    label: '',
+    cls:   '',
+    icon:  '',
+  },
+}
+
+function VramBadge({ vram_gb, compat }: { vram_gb: number; compat: CompatLevel }) {
+  const cfg = COMPAT_CONFIG[compat]
+  return (
+    <div className="flex items-center gap-1.5">
+      {vram_gb > 0 && (
+        <span className="text-[10px] text-zinc-600 font-mono">{vram_gb} GB VRAM</span>
+      )}
+      {compat !== 'unknown' && cfg.label && (
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-semibold shrink-0 ${cfg.cls}`}>
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d={cfg.icon}/>
+          </svg>
+          {cfg.label}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export function ExtensionCard({ ext, installedIds, downloading, loadError, disabled, compatibility = 'unknown', onInstall, onUninstall, onUninstallNode, onRepaired }: Props): JSX.Element {
   const [repairing,   setRepairing]   = useState(false)
   const [repairError, setRepairError] = useState<string | null>(null)
 
-  const badge = TYPE_BADGE[ext.type] ?? TYPE_BADGE.model
+  const badge   = TYPE_BADGE[ext.type] ?? TYPE_BADGE.model
+  const vram_gb = ext.type === 'model' ? (ext.vram_gb ?? 0) : 0
+
+  const borderCls = compatibility === 'recommended'
+    ? 'border-emerald-800/40 hover:border-emerald-700/60'
+    : compatibility === 'incompatible'
+    ? 'border-red-900/30 hover:border-red-800/40'
+    : 'border-zinc-800 hover:border-zinc-700'
 
   async function handleRepair() {
     setRepairing(true)
@@ -39,11 +96,15 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 transition-all overflow-hidden">
+    <div className={`flex flex-col gap-3 px-4 py-4 rounded-2xl border bg-zinc-900/60 transition-all overflow-hidden ${borderCls}`}>
 
       {/* Header */}
       <div className="flex items-start gap-2.5">
-        <div className="shrink-0 w-8 h-8 rounded-xl bg-zinc-800 border border-zinc-700/50 flex items-center justify-center text-zinc-400">
+        <div className={`shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center ${
+          compatibility === 'recommended'
+            ? 'bg-emerald-950/40 border-emerald-800/30 text-emerald-400'
+            : 'bg-zinc-800 border-zinc-700/50 text-zinc-400'
+        }`}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
             <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
@@ -54,13 +115,9 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-xs font-semibold text-zinc-200 truncate leading-tight">{ext.name}</p>
-
-            {/* Type badge */}
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md border text-[10px] font-semibold shrink-0 ${badge.cls}`}>
               {badge.label}
             </span>
-
-            {/* Trust badge — only shown for official extensions */}
             {ext.trusted && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/40 text-zinc-400 text-[10px] font-medium shrink-0">
                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -72,17 +129,12 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {ext.version && (
-              <span className="text-[10px] text-zinc-500 font-mono">v{ext.version}</span>
-            )}
-            {ext.author && (
-              <span className="text-[10px] text-zinc-600">{ext.author}</span>
-            )}
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {ext.version && <span className="text-[10px] text-zinc-500 font-mono">v{ext.version}</span>}
+            {ext.author  && <span className="text-[10px] text-zinc-600">{ext.author}</span>}
           </div>
         </div>
 
-        {/* Uninstall button */}
         {!ext.builtin && (
           <button
             onClick={() => onUninstall(ext.id)}
@@ -100,7 +152,12 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
         )}
       </div>
 
-      {/* Load error */}
+      {/* VRAM + compatibility */}
+      {ext.type === 'model' && vram_gb > 0 && (
+        <VramBadge vram_gb={vram_gb} compat={compatibility} />
+      )}
+
+      {/* Load / repair error */}
       {(loadError || repairError) && (
         <div className="flex flex-col gap-1.5 px-2.5 py-2 rounded-lg bg-red-950/30 border border-red-800/30">
           <div className="flex items-start gap-1.5">
@@ -149,12 +206,9 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
 
             return (
               <div key={node.id} className="flex items-center gap-2">
-                {/* Node name */}
                 <span className="text-[11px] text-zinc-400 font-medium shrink-0 truncate" style={{ maxWidth: '5rem' }}>
                   {node.name}
                 </span>
-
-                {/* I/O types */}
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-[9px] text-zinc-600">{node.input}</span>
                   <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-700 shrink-0">
@@ -163,7 +217,6 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
                   <span className="text-[9px] text-zinc-600">{node.output}</span>
                 </div>
 
-                {/* Status (only for nodes that need model weights) */}
                 <div className="flex-1 min-w-0">
                   {!hasWeights ? (
                     <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-950/40 border border-emerald-800/30">
@@ -212,20 +265,39 @@ export function ExtensionCard({ ext, installedIds, downloading, loadError, disab
                   ) : (
                     <button
                       onClick={() => !disabled && onInstall(node, fullId)}
-                      disabled={disabled}
-                      title={disabled ? 'A download is already in progress' : `Download ${node.name} weights`}
+                      disabled={disabled || compatibility === 'incompatible'}
+                      title={
+                        compatibility === 'incompatible'
+                          ? `Not enough VRAM — needs ${vram_gb} GB`
+                          : disabled
+                          ? 'A download is already in progress'
+                          : `Download ${node.name} weights`
+                      }
                       className={`w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-semibold transition-all ${
-                        !disabled
+                        compatibility === 'incompatible'
+                          ? 'bg-red-950/20 border-red-900/30 text-red-600 cursor-not-allowed'
+                          : !disabled
                           ? 'bg-accent/15 border-accent/25 text-accent-light hover:bg-accent/25 hover:border-accent/40 cursor-pointer'
                           : 'bg-zinc-800/40 border-zinc-700/30 text-zinc-600 cursor-not-allowed'
                       }`}
                     >
-                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
-                      Download
+                      {compatibility === 'incompatible' ? (
+                        <>
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                          Incompatible
+                        </>
+                      ) : (
+                        <>
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                          </svg>
+                          Download
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
