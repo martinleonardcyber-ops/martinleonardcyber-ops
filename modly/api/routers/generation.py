@@ -1,5 +1,7 @@
 import asyncio
+import inspect
 import json
+import logging
 import threading
 import traceback
 import uuid
@@ -10,6 +12,8 @@ from services.generators.base import smooth_progress, GenerationCancelled
 import re as _re
 from services.generator_registry import generator_registry, WORKSPACE_DIR
 from schemas.generation import JobStatus
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["generation"])
 
@@ -148,7 +152,6 @@ async def _run_generation(job_id: str, image_bytes: bytes, params: dict, collect
         gen.outputs_dir = coll_dir
 
         cancel_event = _cancel_events.get(job_id)
-        import inspect
         supports_cancel = "cancel_event" in inspect.signature(gen.generate).parameters
         output_path = await loop.run_in_executor(
             None,
@@ -174,6 +177,6 @@ async def _run_generation(job_id: str, image_bytes: bytes, params: dict, collect
         if job_id in _cancelled:
             return
         tb = traceback.format_exc()
-        print(f"[Generation ERROR] {exc}\n{tb}")
+        logger.error("[Generation ERROR] %s\n%s", exc, tb)
         job.status = "error"
         job.error  = tb.strip()

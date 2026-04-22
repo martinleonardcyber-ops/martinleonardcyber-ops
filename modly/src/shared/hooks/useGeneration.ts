@@ -2,6 +2,9 @@ import { useCallback, useRef } from 'react'
 import { useAppStore } from '@shared/stores/appStore'
 import { useApi } from './useApi'
 
+const POLL_INTERVAL_MS = 1000
+const POLL_TIMEOUT_MS  = 15 * 60 * 1000  // 15 min max
+
 export function useGeneration() {
   const { currentJob, setCurrentJob, updateCurrentJob, generationOptions, selectedImageData, pushMeshUrl, clearMeshHistory } = useAppStore()
   const { generateFromImage, pollJobStatus, cancelJob } = useApi()
@@ -58,8 +61,15 @@ export function useGeneration() {
   )
 
   const pollUntilDone = async (jobId: string) => {
+    const pollStart = Date.now()
     while (true) {
-      await new Promise((r) => setTimeout(r, 1000))
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+
+      if (Date.now() - pollStart > POLL_TIMEOUT_MS) {
+        await cancelJob(jobId).catch(() => {})
+        updateCurrentJob({ status: 'error', error: 'Generation timed out after 15 minutes' })
+        break
+      }
 
       if (cancelledRef.current) {
         await cancelJob(jobId)

@@ -5,6 +5,9 @@ import type { Workflow, WFNode, WFEdge } from '@shared/types/electron.d'
 import { getWorkflowExtension } from './mockExtensions'
 import type { WorkflowExtension } from './mockExtensions'
 
+const POLL_INTERVAL_MS  = 1200
+const POLL_TIMEOUT_MS   = 15 * 60 * 1000  // 15 min max per node
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WorkflowRunState {
@@ -191,6 +194,7 @@ export function useWorkflowRunner(allExtensions: WorkflowExtension[]) {
           const jobId = data.job_id
           activeJobId.current = jobId
 
+          const pollStart = Date.now()
           while (true) {
             if (cancelRef.current) {
               await client.post(`/generate/cancel/${jobId}`).catch(() => {})
@@ -198,7 +202,12 @@ export function useWorkflowRunner(allExtensions: WorkflowExtension[]) {
               setRunState(IDLE)
               return
             }
-            await new Promise((r) => setTimeout(r, 1200))
+            await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+
+            if (Date.now() - pollStart > POLL_TIMEOUT_MS) {
+              await client.post(`/generate/cancel/${jobId}`).catch(() => {})
+              throw new Error('Generation timed out after 15 minutes')
+            }
 
             const { data: st } = await client.get<{
               status: string; progress?: number; step?: string
