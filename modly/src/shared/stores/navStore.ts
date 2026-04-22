@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type Page = 'generate' | 'workflows' | 'models' | 'settings'
+export type Page = 'dashboard' | 'generate' | 'workflows' | 'models' | 'settings'
 
 interface NavState {
   currentPage: Page
@@ -8,6 +8,6 @@ interface NavState {
 }
 
 export const useNavStore = create<NavState>((set) => ({
-  currentPage: 'generate',
+  currentPage: 'dashboard',
   navigate: (page) => set({ currentPage: page })
 }))

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import axios from 'axios'
 import {
   ReactFlowProvider,
   useNodesState, useEdgesState, useReactFlow,
@@ -533,6 +534,193 @@ function EmbeddedCanvas({ workflow, allExtensions }: {
   )
 }
 
+// ─── Text-to-3D panel ─────────────────────────────────────────────────────────
+
+const STYLE_OPTIONS = [
+  { id: 'realistic', label: 'Realistic', emoji: '📷' },
+  { id: 'cartoon',   label: 'Cartoon',   emoji: '🎨' },
+  { id: 'sci-fi',    label: 'Sci-fi',    emoji: '🚀' },
+  { id: 'anime',     label: 'Anime',     emoji: '⛩️' },
+  { id: 'abstract',  label: 'Abstract',  emoji: '✦'  },
+]
+
+const EXAMPLE_PROMPTS = [
+  'A wooden chair with carved details',
+  'A futuristic sports car',
+  'A medieval helmet with horns',
+  'A cute penguin wearing a hat',
+  'A crystal sword with glowing runes',
+]
+
+function TextTo3DPanel() {
+  const [prompt, setPrompt]       = useState('')
+  const [style, setStyle]         = useState('realistic')
+  const [quality, setQuality]     = useState<'draft' | 'standard' | 'hd'>('standard')
+  const [isGenerating, setIsGenerating] = useState(false)
+  const cancelRef = useRef(false)
+
+  const apiUrl           = useAppStore((s) => s.apiUrl)
+  const setCurrentJob    = useAppStore((s) => s.setCurrentJob)
+  const updateCurrentJob = useAppStore((s) => s.updateCurrentJob)
+  const pushMeshUrl      = useAppStore((s) => s.pushMeshUrl)
+
+  async function handleGenerate() {
+    if (!prompt.trim() || !apiUrl) return
+    cancelRef.current = false
+    setIsGenerating(true)
+
+    setCurrentJob({
+      id: crypto.randomUUID(), imageFile: '',
+      status: 'generating', progress: 0, createdAt: Date.now(),
+    })
+
+    try {
+      const { data } = await axios.post<{ job_id: string }>(
+        `${apiUrl}/text-generate/from-prompt`,
+        { prompt: prompt.trim(), style, quality },
+      )
+      const jid = data.job_id
+
+      while (true) {
+        if (cancelRef.current) { setCurrentJob(null); break }
+        await new Promise((r) => setTimeout(r, 1000))
+
+        const { data: st } = await axios.get<{
+          status: string; progress?: number; step?: string
+          output_url?: string; error?: string
+        }>(`${apiUrl}/text-generate/status/${jid}`)
+
+        if (st.status === 'done' && st.output_url) {
+          updateCurrentJob({ status: 'done', progress: 100, outputUrl: st.output_url, originalOutputUrl: st.output_url })
+          pushMeshUrl(st.output_url)
+          break
+        }
+        if (st.status === 'error') throw new Error(st.error ?? 'Generation failed')
+        if (st.status === 'cancelled') { setCurrentJob(null); break }
+        updateCurrentJob({ status: 'generating', progress: st.progress ?? 0, step: st.step })
+      }
+    } catch (err: any) {
+      const msg: string = err?.response?.data?.detail ?? err?.message ?? 'Unknown error'
+      updateCurrentJob({ status: 'error', error: msg })
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  function handleCancel() {
+    cancelRef.current = true
+    setIsGenerating(false)
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+
+        {/* Prompt textarea */}
+        <div className="flex flex-col gap-2">
+          <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Prompt</label>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe the 3D object you want to create…"
+            rows={4}
+            disabled={isGenerating}
+            className="w-full bg-zinc-900/60 border border-white/[0.07] rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed transition-colors disabled:opacity-50"
+          />
+          {/* Example prompts */}
+          <div className="flex flex-wrap gap-1.5">
+            {EXAMPLE_PROMPTS.slice(0, 3).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPrompt(p)}
+                className="px-2 py-1 rounded-lg bg-zinc-800/60 border border-white/[0.05] text-[10px] text-zinc-500 hover:text-zinc-300 hover:border-white/[0.12] transition-colors text-left"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Style pills */}
+        <div className="flex flex-col gap-2">
+          <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Style</label>
+          <div className="flex flex-wrap gap-1.5">
+            {STYLE_OPTIONS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setStyle(s.id)}
+                disabled={isGenerating}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-40
+                  ${style === s.id
+                    ? 'bg-violet-500/15 border-violet-500/35 text-violet-300'
+                    : 'bg-zinc-900/40 border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:border-white/[0.12]'
+                  }`}
+              >
+                <span>{s.emoji}</span>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Quality */}
+        <div className="flex flex-col gap-2">
+          <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Quality</label>
+          <div className="flex gap-1.5">
+            {(['draft', 'standard', 'hd'] as const).map((q) => (
+              <button
+                key={q}
+                onClick={() => setQuality(q)}
+                disabled={isGenerating}
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-40
+                  ${quality === q
+                    ? 'bg-violet-500/15 border-violet-500/35 text-violet-300'
+                    : 'bg-zinc-900/40 border-white/[0.06] text-zinc-500 hover:text-zinc-300'
+                  }`}
+              >
+                {q === 'draft' ? 'Draft' : q === 'standard' ? 'Standard' : 'HD'}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-zinc-700">
+            {quality === 'draft' ? 'Fast · ~1 min' : quality === 'standard' ? 'Balanced · ~3 min' : 'Best quality · ~8 min'}
+          </p>
+        </div>
+
+        {/* Tip when no model installed */}
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-blue-500/5 border border-blue-500/15">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-400 shrink-0 mt-0.5">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <p className="text-[10px] text-zinc-500 leading-relaxed">
+            Requires a text-to-3D extension. Install one from the <span className="text-blue-400">Extensions</span> page.
+          </p>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 px-4 pt-3 pb-4 border-t border-white/[0.05]">
+        {isGenerating ? (
+          <button
+            onClick={handleCancel}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            onClick={handleGenerate}
+            disabled={!prompt.trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white btn-gradient disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Generate 3D Model
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export default function WorkflowPanel() {
@@ -541,6 +729,7 @@ export default function WorkflowPanel() {
   const loadExtensions         = useExtensionsStore((s) => s.loadExtensions)
   const { navigate }           = useNavStore()
   const [selectedId, setSelectedId] = useState<string | null>(activeId)
+  const [mode, setMode]             = useState<'image' | 'text'>('image')
 
   const allExtensions = useMemo(
     () => buildAllWorkflowExtensions(modelExtensions, processExtensions),
@@ -549,7 +738,6 @@ export default function WorkflowPanel() {
 
   useEffect(() => { load(); loadExtensions() }, [])
 
-  // Sync when navigated here from the workflow editor (activeId set externally)
   useEffect(() => {
     if (activeId) setSelectedId(activeId)
   }, [activeId])
@@ -561,46 +749,89 @@ export default function WorkflowPanel() {
   const workflow = workflows.find((w) => w.id === selectedId) ?? null
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#0c0c0e]">
 
-      {/* Header */}
-      <div className="shrink-0 px-4 pt-3 pb-3 border-b border-zinc-800 flex flex-col gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Workflow</h2>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0">
-            <WorkflowDropdown workflows={workflows} value={selectedId} onChange={setSelectedId} />
-          </div>
-          {selectedId && (
-            <button
-              onClick={() => { useWorkflowsStore.getState().setActive(selectedId!); navigate('workflows') }}
-              title="Edit workflow"
-              className="shrink-0 p-1.5 rounded-lg border border-zinc-700 bg-zinc-800/60 text-zinc-400
-                         hover:text-zinc-100 hover:bg-zinc-700 hover:border-zinc-600 transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-            </button>
-          )}
+      {/* Mode toggle */}
+      <div className="shrink-0 px-3 pt-3 pb-2">
+        <div className="flex gap-0.5 p-1 bg-zinc-900/80 rounded-xl border border-white/[0.05]">
+          <button
+            onClick={() => setMode('image')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all
+              ${mode === 'image' ? 'bg-zinc-700/80 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            Image to 3D
+          </button>
+          <button
+            onClick={() => setMode('text')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all
+              ${mode === 'text' ? 'bg-zinc-700/80 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>
+            </svg>
+            Text to 3D
+          </button>
         </div>
       </div>
 
-      {/* Canvas or empty state */}
-      {workflow ? (
-        <ReactFlowProvider>
-          <EmbeddedCanvas
-            key={workflow.id + workflow.updatedAt}
-            workflow={workflow}
-            allExtensions={allExtensions}
-          />
-        </ReactFlowProvider>
+      {mode === 'text' ? (
+        <TextTo3DPanel />
       ) : (
-        <div className="flex-1 flex items-center justify-center px-6">
-          <p className="text-xs text-zinc-600 text-center leading-relaxed">
-            No workflows yet.<br/>Create one in the Workflows tab.
-          </p>
-        </div>
+        <>
+          {/* Workflow header */}
+          <div className="shrink-0 px-4 pt-2 pb-3 border-b border-white/[0.05] flex flex-col gap-3">
+            <h2 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Workflow</h2>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <WorkflowDropdown workflows={workflows} value={selectedId} onChange={setSelectedId} />
+              </div>
+              {selectedId && (
+                <button
+                  onClick={() => { useWorkflowsStore.getState().setActive(selectedId!); navigate('workflows') }}
+                  title="Edit workflow"
+                  className="shrink-0 p-1.5 rounded-lg border border-white/[0.07] bg-zinc-800/60 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Canvas or empty state */}
+          {workflow ? (
+            <ReactFlowProvider>
+              <EmbeddedCanvas
+                key={workflow.id + workflow.updatedAt}
+                workflow={workflow}
+                allExtensions={allExtensions}
+              />
+            </ReactFlowProvider>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center px-6 gap-3">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" className="text-zinc-700">
+                <circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="12" r="2"/>
+                <path d="M7 6h4a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4H7"/>
+              </svg>
+              <p className="text-xs text-zinc-600 text-center leading-relaxed">
+                No workflows yet.<br/>Create one in the Workflows tab.
+              </p>
+              <button
+                onClick={() => navigate('workflows')}
+                className="px-3 py-1.5 rounded-lg border border-white/[0.07] text-zinc-500 hover:text-zinc-200 text-[10px] font-medium transition-colors"
+              >
+                Open Workflows
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
