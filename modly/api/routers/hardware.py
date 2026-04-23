@@ -1,6 +1,6 @@
 """
 Hardware detection endpoint.
-Uses nvidia-smi (no dependencies) as primary method, falls back to torch if available.
+Detection order: pynvml → nvidia-smi (multiple paths) → torch → wmic (Windows)
 """
 import logging
 import platform
@@ -11,87 +11,114 @@ from fastapi import APIRouter
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["hardware"])
 
+# Common nvidia-smi locations on Windows
+_SMI_PATHS = [
+    "nvidia-smi",
+    r"C:\Windows\System32\nvidia-smi.exe",
+    r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+    r"C:\Program Files (x86)\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+]
 
-def _gpu_info_nvidia_smi() -> dict | None:
-    """Query GPU via nvidia-smi — works without torch installed."""
+
+def _gpu_info_pynvml() -> dict | None:
+    """Fastest: direct NVML bindings, no subprocess needed."""
     try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,memory.total,memory.free",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode != 0:
-            return None
-        line = result.stdout.strip().splitlines()[0]
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 3:
-            return None
-        name        = parts[0]
-        total_mb    = float(parts[1])
-        free_mb     = float(parts[2])
-        return {
-            "cuda_available": True,
-            "gpu_name":       name,
-            "vram_total_gb":  round(total_mb / 1024, 1),
-            "vram_free_gb":   round(free_mb  / 1024, 1),
-        }
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        name   = pynvml.nvmlDeviceGetName(handle)
+        if isinstance(name, bytes):
+            name = name.decode()
+        mem    = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        total  = round(mem.total / 1024 ** 3, 1)
+        free   = round(mem.free  / 1024 ** 3, 1)
+        pynvml.nvmlShutdown()
+        return {"cuda_available": True, "gpu_name": name, "vram_total_gb": total, "vram_free_gb": free}
     except Exception as exc:
-        logger.debug("nvidia-smi unavailable: %s", exc)
+        logger.debug("pynvml failed: %s", exc)
         return None
 
 
+def _gpu_info_nvidia_smi() -> dict | None:
+    """Subprocess nvidia-smi — tries multiple common paths."""
+    candidates = _SMI_PATHS if platform.system() == "Windows" else ["nvidia-smi"]
+    for smi in candidates:
+        try:
+            r = subprocess.run(
+                [smi, "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode != 0:
+                continue
+            line  = r.stdout.strip().splitlines()[0]
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 3:
+                continue
+            return {
+                "cuda_available": True,
+                "gpu_name":       parts[0],
+                "vram_total_gb":  round(float(parts[1]) / 1024, 1),
+                "vram_free_gb":   round(float(parts[2]) / 1024, 1),
+            }
+        except Exception:
+            continue
+    return None
+
+
 def _gpu_info_torch() -> dict | None:
-    """Query GPU via torch — only works if torch+CUDA is installed."""
+    """Torch CUDA — only if torch is already installed in the venv."""
     try:
         import torch
         if not torch.cuda.is_available():
             return None
-        name        = torch.cuda.get_device_name(0)
-        props       = torch.cuda.get_device_properties(0)
-        total       = round(props.total_memory / 1024 ** 3, 1)
-        free_bytes, _ = torch.cuda.mem_get_info(0)
-        free        = round(free_bytes / 1024 ** 3, 1)
-        return {"cuda_available": True, "gpu_name": name, "vram_total_gb": total, "vram_free_gb": free}
+        props = torch.cuda.get_device_properties(0)
+        total = round(props.total_memory / 1024 ** 3, 1)
+        free_b, _ = torch.cuda.mem_get_info(0)
+        return {
+            "cuda_available": True,
+            "gpu_name":       torch.cuda.get_device_name(0),
+            "vram_total_gb":  total,
+            "vram_free_gb":   round(free_b / 1024 ** 3, 1),
+        }
     except Exception:
         return None
 
 
 def _gpu_info_wmi() -> dict | None:
-    """Windows fallback: query GPU name via wmic (no CUDA info, but at least shows the card)."""
+    """Windows-only last resort: wmic VideoController."""
     if platform.system() != "Windows":
         return None
     try:
-        result = subprocess.run(
-            ["wmic", "path", "win32_VideoController", "get", "name,AdapterRAM", "/format:csv"],
-            capture_output=True, text=True, timeout=5,
+        r = subprocess.run(
+            ["wmic", "path", "win32_VideoController", "get", "Name,AdapterRAM", "/format:csv"],
+            capture_output=True, text=True, timeout=8,
         )
-        for line in result.stdout.splitlines():
+        for line in r.stdout.splitlines():
             line = line.strip()
-            if not line or line.startswith("Node"):
+            if not line or "Name" in line and "AdapterRAM" in line:
                 continue
             parts = line.split(",")
-            if len(parts) >= 3:
-                name = parts[2].strip()
-                ram_bytes = int(parts[1].strip()) if parts[1].strip().isdigit() else 0
-                if "NVIDIA" in name.upper() or "AMD" in name.upper() or "RADEON" in name.upper():
-                    vram_gb = round(ram_bytes / 1024 ** 3, 1)
-                    return {
-                        "cuda_available": "NVIDIA" in name.upper(),
-                        "gpu_name":       name,
-                        "vram_total_gb":  vram_gb,
-                        "vram_free_gb":   vram_gb,
-                    }
+            if len(parts) < 3:
+                continue
+            name      = parts[2].strip()
+            ram_bytes = int(parts[1].strip()) if parts[1].strip().isdigit() else 0
+            if "NVIDIA" in name.upper():
+                vram = round(ram_bytes / 1024 ** 3, 1) if ram_bytes > 0 else 0.0
+                return {"cuda_available": True, "gpu_name": name, "vram_total_gb": vram, "vram_free_gb": vram}
     except Exception as exc:
-        logger.debug("wmic GPU query failed: %s", exc)
+        logger.debug("wmic failed: %s", exc)
     return None
 
 
 def _gpu_info() -> dict:
     no_gpu = {"cuda_available": False, "gpu_name": None, "vram_total_gb": 0.0, "vram_free_gb": 0.0}
-    return _gpu_info_nvidia_smi() or _gpu_info_torch() or _gpu_info_wmi() or no_gpu
+    return (
+        _gpu_info_pynvml()      or
+        _gpu_info_nvidia_smi()  or
+        _gpu_info_torch()       or
+        _gpu_info_wmi()         or
+        no_gpu
+    )
 
 
 def _ram_gb() -> float:
@@ -100,7 +127,6 @@ def _ram_gb() -> float:
         return round(psutil.virtual_memory().total / 1024 ** 3, 1)
     except Exception:
         pass
-    # Linux fallback
     try:
         with open("/proc/meminfo") as f:
             for line in f:
@@ -108,13 +134,12 @@ def _ram_gb() -> float:
                     return round(int(line.split()[1]) / 1024 ** 2, 1)
     except Exception:
         pass
-    # Windows fallback via wmic
     try:
-        result = subprocess.run(
+        r = subprocess.run(
             ["wmic", "OS", "get", "TotalVisibleMemorySize", "/value"],
             capture_output=True, text=True, timeout=5,
         )
-        m = re.search(r"TotalVisibleMemorySize=(\d+)", result.stdout)
+        m = re.search(r"TotalVisibleMemorySize=(\d+)", r.stdout)
         if m:
             return round(int(m.group(1)) / 1024 ** 2, 1)
     except Exception:
@@ -123,9 +148,9 @@ def _ram_gb() -> float:
 
 
 def _recommended_tier(vram_gb: float, cuda: bool) -> str:
-    if not cuda:    return "none"
-    if vram_gb >= 12: return "high"
-    if vram_gb >= 6:  return "mid"
+    if not cuda:        return "none"
+    if vram_gb >= 12:   return "high"
+    if vram_gb >= 6:    return "mid"
     return "low"
 
 
