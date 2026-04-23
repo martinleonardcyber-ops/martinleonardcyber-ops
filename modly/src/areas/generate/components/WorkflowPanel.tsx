@@ -465,8 +465,54 @@ function EmbeddedCanvas({ workflow, allExtensions }: {
     run(wf, allExtensions)
   }, [nodes, edges, workflow, allExtensions, run])
 
+  // ── Quality presets ────────────────────────────────────────────────────────
+  const PRESETS = [
+    { id: 'fast',     label: '⚡ Fast',     steps: 20, guidance: 5.0,  time: '~30s' },
+    { id: 'balanced', label: '⚖ Balanced', steps: 50, guidance: 7.5,  time: '~2 min' },
+    { id: 'ultra',    label: '✦ Ultra',    steps: 100, guidance: 10.0, time: '~6 min' },
+  ] as const
+  type PresetId = typeof PRESETS[number]['id']
+  const [activePreset, setActivePreset] = useState<PresetId | null>(null)
+
+  function applyPreset(p: typeof PRESETS[number]) {
+    setActivePreset(p.id)
+    // Patch all extension nodes that have num_steps / guidance_scale params
+    for (const node of nodes) {
+      if (node.type !== 'extensionNode') continue
+      const data = node.data as { params?: Record<string, unknown> }
+      if (!data.params) continue
+      const patch: Record<string, unknown> = {}
+      if ('num_steps'     in data.params) patch.num_steps      = p.steps
+      if ('guidance_scale' in data.params) patch.guidance_scale = p.guidance
+      if (Object.keys(patch).length > 0) {
+        patchNode(node.id, { params: { ...data.params, ...patch } })
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
+
+      {/* Quality presets */}
+      <div className="shrink-0 px-4 pt-3 pb-2 border-b border-zinc-800/60">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 mb-2">Quality preset</p>
+        <div className="flex gap-1.5">
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p)}
+              className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl border text-[10px] font-semibold transition-all ${
+                activePreset === p.id
+                  ? 'bg-accent/15 border-accent/35 text-accent-light'
+                  : 'bg-zinc-800/40 border-zinc-700/40 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+              }`}
+            >
+              <span>{p.label}</span>
+              <span className={`font-normal ${activePreset === p.id ? 'text-accent-light/70' : 'text-zinc-700'}`}>{p.time}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Params list */}
       <div className="flex-1 overflow-y-auto min-h-0 px-4 py-3 flex flex-col gap-4">

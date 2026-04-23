@@ -1,0 +1,59 @@
+{
+  "id": "trellis",
+  "name": "TRELLIS (Image → 3D + Textures)",
+  "description": "Microsoft's state-of-the-art image-to-3D model (2024). Uses Structured LATent representation to produce highly detailed meshes with PBR textures. Best open-source quality available.",
+  "version": "1.0.0",
+  "author": "Microsoft Research (extension by Modly)",
+  "license": "MIT",
+  "generator_class": "TrellisGenerator",
+  "type": "model",
+  "input": "image",
+  "output": "mesh",
+  "supports_text": false,
+  "vram_gb": 16,
+  "tags": ["image-to-3d", "textures", "pbr", "microsoft", "high-quality", "2024"],
+  "hf_repo": "microsoft/TRELLIS-image-large",
+  "hf_skip_prefixes": ["*.md", "LICENSE", "assets/"],
+  "download_check": "ckpts",
+  "params_schema": [
+    {
+      "id": "sparse_steps",
+      "label": "Sparse structure steps",
+      "type": "int",
+      "default": 12,
+      "min": 8,
+      "max": 24,
+      "tooltip": "Diffusion steps for sparse 3D structure generation."
+    },
+    {
+      "id": "slat_steps",
+      "label": "SLAT steps",
+      "type": "int",
+      "default": 12,
+      "min": 8,
+      "max": 24,
+      "tooltip": "Diffusion steps for structured latent refinement."
+    },
+    {
+      "id": "simplify",
+      "label": "Mesh simplification",
+      "type": "float",
+      "default": 0.95,
+      "min": 0.8,
+      "max": 1.0,
+      "tooltip": "Higher = fewer polygons. 0.95 gives a clean, optimised mesh."
+    },
+    {
+      "id": "texture_size",
+      "label": "Texture resolution",
+      "type": "select",
+      "default": 1024,
+      "options": [
+        { "value": 512,  "label": "512 px — Fast" },
+        { "value": 1024, "label": "1024 px — Standard" },
+        { "value": 2048, "label": "2048 px — HD" }
+      ],
+      "tooltip": "Output texture map resolution."
+    }
+  ]
+}

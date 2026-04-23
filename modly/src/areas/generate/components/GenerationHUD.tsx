@@ -1,6 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGeneration } from '@shared/hooks/useGeneration'
 
+// ─── Error diagnosis ──────────────────────────────────────────────────────────
+
+interface ErrorHint { title: string; suggestion?: string }
+
+function diagnoseError(msg: string): ErrorHint {
+  const m = msg.toLowerCase()
+  if (m.includes('out of memory') || m.includes('cuda out of memory') || m.includes('oom')) {
+    return {
+      title: 'Out of GPU memory (OOM)',
+      suggestion: 'Try reducing Diffusion steps or disabling PBR Textures in the model settings. Closing other GPU-heavy apps may also help.',
+    }
+  }
+  if (m.includes('no cuda') || m.includes('cuda not available') || m.includes('cuda is not available')) {
+    return {
+      title: 'CUDA not available',
+      suggestion: 'No NVIDIA GPU detected. Make sure your GPU drivers are up to date and that you have CUDA installed. Generation will be very slow on CPU.',
+    }
+  }
+  if (m.includes('connection refused') || m.includes('econnrefused') || m.includes('network error')) {
+    return {
+      title: 'Backend unreachable',
+      suggestion: 'The Python backend is not responding. Try restarting Modly. If the problem persists, check that no firewall is blocking localhost:8000.',
+    }
+  }
+  if (m.includes('no text-to-3d') || m.includes('no text capable') || m.includes('notimplementederror')) {
+    return {
+      title: 'No text-to-3D model installed',
+      suggestion: 'Install a text-capable extension such as Shap-E from the Extensions page.',
+    }
+  }
+  if (m.includes('timed out') || m.includes('timeout')) {
+    return {
+      title: 'Generation timed out',
+      suggestion: 'The model took too long. Try using fewer diffusion steps or the Fast quality preset.',
+    }
+  }
+  if (m.includes('modulenotfounderror') || m.includes('importerror')) {
+    return {
+      title: 'Missing dependency',
+      suggestion: 'A required Python package is missing. Open the Extensions page and click "Repair" on the affected model.',
+    }
+  }
+  return { title: 'Generation failed' }
+}
+
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
@@ -108,55 +153,50 @@ export default function GenerationHUD(): JSX.Element | null {
         )}
 
         {/* Error */}
-        {status === 'error' && (
-          <div className="px-5 py-4 flex flex-col gap-3 animate-fade-in">
-            <div className="flex items-center gap-2.5">
-              <div className="w-6 h-6 rounded-full bg-red-500/10 border border-red-500/25 flex items-center justify-center shrink-0">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-red-400">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+        {status === 'error' && (() => {
+          const hint = diagnoseError(error ?? '')
+          return (
+            <div className="px-5 py-4 flex flex-col gap-3 animate-fade-in">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-red-500/10 border border-red-500/25 flex items-center justify-center shrink-0">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-red-400">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </div>
+                <span className="text-sm font-semibold text-zinc-100">{hint.title}</span>
               </div>
-              <span className="text-sm font-semibold text-zinc-100">Generation failed</span>
-            </div>
 
-            <p className="text-xs text-red-400/90 bg-red-950/30 border border-red-900/30 rounded-xl px-3 py-2.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">
-              {error}
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                onClick={reset}
-                className="flex-1 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors"
-              >
-                Try again
-              </button>
-              {error && (
-                <button
-                  onClick={() => handleCopyError(error)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors"
-                >
-                  {copied ? (
-                    <>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      <span className="text-emerald-400 text-xs">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                      <span className="text-xs">Copy</span>
-                    </>
-                  )}
-                </button>
+              {/* Human-readable suggestion */}
+              {hint.suggestion && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-950/30 border border-amber-800/30">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-amber-400 shrink-0 mt-0.5">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <p className="text-[11px] text-amber-300/90 leading-relaxed">{hint.suggestion}</p>
+                </div>
               )}
+
+              <p className="text-[10px] text-red-400/80 bg-red-950/20 border border-red-900/20 rounded-xl px-3 py-2.5 max-h-20 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed font-mono">
+                {error}
+              </p>
+
+              <div className="flex gap-2">
+                <button onClick={reset} className="flex-1 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors">
+                  Try again
+                </button>
+                {error && (
+                  <button onClick={() => handleCopyError(error)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors">
+                    {copied ? (
+                      <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-emerald-400"><polyline points="20 6 9 17 4 12"/></svg><span className="text-emerald-400 text-xs">Copied</span></>
+                    ) : (
+                      <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span className="text-xs">Copy</span></>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
       </div>
     </div>
   )
