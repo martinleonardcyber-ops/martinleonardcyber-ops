@@ -22,7 +22,7 @@ function diagnoseError(msg: string): ErrorHint {
   if (m.includes('connection refused') || m.includes('econnrefused') || m.includes('network error')) {
     return {
       title: 'Backend unreachable',
-      suggestion: 'The Python backend is not responding. Try restarting Modly. If the problem persists, check that no firewall is blocking localhost:8000.',
+      suggestion: 'The Python backend is not responding. Try restarting Dodai. If the problem persists, check that no firewall is blocking localhost:8765.',
     }
   }
   if (m.includes('no text-to-3d') || m.includes('no text capable') || m.includes('notimplementederror')) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
+import { useAppStore } from '@shared/stores/appStore'
 
 export interface HardwareInfo {
   cuda_available:         boolean
@@ -14,9 +15,8 @@ export interface HardwareInfo {
   recommended_ids:        string[]
 }
 
-const API_BASE = 'http://127.0.0.1:8000'
-
 export function useHardware(pollMs = 0) {
+  const apiUrl = useAppStore((s) => s.apiUrl)
   const [info,    setInfo]    = useState<HardwareInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
@@ -26,8 +26,9 @@ export function useHardware(pollMs = 0) {
     active.current = true
 
     async function fetch() {
+      if (!apiUrl) return
       try {
-        const r = await axios.get<HardwareInfo>(`${API_BASE}/hardware/info`, { timeout: 3000 })
+        const r = await axios.get<HardwareInfo>(`${apiUrl}/hardware/info`, { timeout: 3000 })
         if (active.current) { setInfo(r.data); setLoading(false); setError(null) }
       } catch (e) {
         if (active.current) { setError(String(e)); setLoading(false) }
@@ -41,7 +42,7 @@ export function useHardware(pollMs = 0) {
       return () => { active.current = false; clearInterval(id) }
     }
     return () => { active.current = false }
-  }, [pollMs])
+  }, [pollMs, apiUrl])
 
   function compatibility(vram_gb: number): 'recommended' | 'ok' | 'warning' | 'incompatible' | 'unknown' {
     if (!info) return 'unknown'
