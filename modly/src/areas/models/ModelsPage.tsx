@@ -7,6 +7,8 @@ import { ExtensionCard } from './components/ExtensionCard'
 import type { ExtensionNode } from './components/ExtensionCard'
 import { useHardware } from '@shared/hooks/useHardware'
 import type { HardwareInfo } from '@shared/hooks/useHardware'
+import LLMHub from './components/LLMHub'
+import { useT } from '@shared/i18n'
 
 // ─── Hardware banner ──────────────────────────────────────────────────────────
 
@@ -29,7 +31,6 @@ function HardwareBanner({ info }: { info: HardwareInfo }) {
 
   return (
     <div className={`flex items-center gap-4 px-4 py-3 rounded-xl border bg-gradient-to-r ${tierColor} to-transparent mb-4`}>
-      {/* GPU icon */}
       <div className="shrink-0 w-8 h-8 rounded-lg bg-zinc-800/80 border border-zinc-700/40 flex items-center justify-center">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300">
           <rect x="2" y="6" width="20" height="12" rx="2"/>
@@ -37,8 +38,6 @@ function HardwareBanner({ info }: { info: HardwareInfo }) {
           <path d="M6 2v4M18 2v4M6 18v4M18 18v4"/>
         </svg>
       </div>
-
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
@@ -53,8 +52,6 @@ function HardwareBanner({ info }: { info: HardwareInfo }) {
         </div>
         <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{info.recommended_tier_label}</p>
       </div>
-
-      {/* RAM chip */}
       {info.ram_gb > 0 && (
         <div className="shrink-0 text-right hidden sm:block">
           <p className="text-[10px] text-zinc-600">System RAM</p>
@@ -65,13 +62,11 @@ function HardwareBanner({ info }: { info: HardwareInfo }) {
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── 3D Extensions tab ────────────────────────────────────────────────────────
 
-export default function ModelsPage(): JSX.Element {
-  // Hardware detection
+function ThreeDModelsTab() {
   const { info: hwInfo, compatibility } = useHardware()
 
-  // Extensions store
   const modelExtensions   = useExtensionsStore((s) => s.modelExtensions)
   const processExtensions = useExtensionsStore((s) => s.processExtensions)
   const extLoading        = useExtensionsStore((s) => s.loading)
@@ -84,14 +79,12 @@ export default function ModelsPage(): JSX.Element {
   const reloadExtensions  = useExtensionsStore((s) => s.reload)
   const clearInstall      = useExtensionsStore((s) => s.clearInstallState)
 
-  // Compatibility rank: recommended > ok > warning > unknown > incompatible
   const compatRank = (ext: AnyExtension): number => {
     if (ext.type !== 'model') return 2
     const c = compatibility(ext.vram_gb ?? 0)
     return { recommended: 0, ok: 1, warning: 2, unknown: 3, incompatible: 4 }[c] ?? 3
   }
 
-  // All extensions sorted: compatible first, then builtin, then name
   const allExtensions: AnyExtension[] = [
     ...modelExtensions,
     ...processExtensions,
@@ -102,25 +95,15 @@ export default function ModelsPage(): JSX.Element {
     return a.name.localeCompare(b.name)
   })
 
-  // Model weight state (needed for node install status + uninstall cleanup)
   const [installedVariantIds, setInstalledVariantIds] = useState<string[]>([])
   const [downloading, setDownloading] = useState<Record<string, { percent: number; file?: string; fileIndex?: number; totalFiles?: number }>>({})
-
-  // Uninstall modal state
   const [uninstallTarget, setUninstallTarget] = useState<string | null>(null)
   const [modelsToDelete,  setModelsToDelete]  = useState<Set<string>>(new Set())
-
-  // Search
   const [search, setSearch] = useState('')
-
-  // GitHub extension install form
   const [showGHForm, setShowGHForm] = useState(false)
   const [ghUrl,      setGhUrl]      = useState('')
   const [ghErr,      setGhErr]      = useState<string | null>(null)
 
-  // ── Init ──────────────────────────────────────────────────────────────────
-
-  // Check each model node individually via filesystem IPC — reliable regardless of API state
   async function refreshInstalledIds(exts: ModelExtension[]) {
     const ids: string[] = []
     for (const ext of exts) {
@@ -155,8 +138,6 @@ export default function ModelsPage(): JSX.Element {
     if (installError) setGhErr(installError)
   }, [installError])
 
-  // ── GitHub extension install ───────────────────────────────────────────────
-
   async function handleGHInstall() {
     const url = ghUrl.trim()
     if (!url) { setGhErr('GitHub URL required'); return }
@@ -171,8 +152,6 @@ export default function ModelsPage(): JSX.Element {
       setGhErr(result.error ?? 'Installation failed')
     }
   }
-
-  // ── Uninstall extension ────────────────────────────────────────────────────
 
   function openUninstallModal(extId: string) {
     const ext = allExtensions.find((e) => e.id === extId)
@@ -194,8 +173,6 @@ export default function ModelsPage(): JSX.Element {
     setModelsToDelete(new Set())
     refreshInstalledIds(useExtensionsStore.getState().modelExtensions)
   }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   const isInstalling = installProgress !== null &&
     installProgress.step !== 'done' &&
@@ -223,158 +200,82 @@ export default function ModelsPage(): JSX.Element {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="h-full flex flex-col">
-
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="px-6 pt-6 pb-4 border-b border-zinc-800/60 shrink-0">
+      {/* Header */}
+      <div className="px-6 pt-4 pb-4 border-b border-zinc-800/60 shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-base font-semibold text-zinc-100">Extensions</h1>
-          <div className="flex items-center gap-2">
-
-            <button
-              onClick={() => { setShowGHForm((v) => !v); setGhErr(null); clearInstall() }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-800/80 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-all border border-zinc-700/60"
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.807 1.305 3.492.997.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.468-2.38 1.235-3.22-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.3 1.23A11.51 11.51 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.29-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.91 1.235 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .322.216.694.825.576C20.565 21.796 24 17.298 24 12c0-6.63-5.37-12-12-12z"/>
-              </svg>
-              {showGHForm ? 'Cancel' : 'Install from GitHub'}
-            </button>
-          </div>
+          <h1 className="text-base font-semibold text-zinc-100">Extensions 3D</h1>
+          <button
+            onClick={() => { setShowGHForm((v) => !v); setGhErr(null); clearInstall() }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-800/80 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-all border border-zinc-700/60"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.807 1.305 3.492.997.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.468-2.38 1.235-3.22-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.3 1.23A11.51 11.51 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.29-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.91 1.235 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .322.216.694.825.576C20.565 21.796 24 17.298 24 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            {showGHForm ? 'Annuler' : 'Installer depuis GitHub'}
+          </button>
         </div>
 
-        {/* Search bar */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-zinc-800/60 border border-zinc-700/60 focus-within:border-zinc-500 focus-within:bg-zinc-800 transition-colors">
+          <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-zinc-800/60 border border-zinc-700/60 focus-within:border-zinc-500 transition-colors">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-500 shrink-0">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
             <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search extensions…"
+              type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher extensions…"
               className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="text-zinc-600 hover:text-zinc-400 transition-colors">
+              <button onClick={() => setSearch('')} className="text-zinc-600 hover:text-zinc-400">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             )}
-            {allExtensions.length > 0 && (
-              <span className="text-[11px] text-zinc-600 shrink-0">
-                {search.trim() ? `${filteredExtensions.length} / ${allExtensions.length}` : `${allExtensions.length}`}
-              </span>
-            )}
           </div>
-          <button
-            onClick={reloadExtensions}
-            disabled={extLoading}
-            title="Reload extensions"
-            className="p-2.5 rounded-xl bg-zinc-800/60 border border-zinc-700/60 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 hover:border-zinc-600 transition-colors disabled:opacity-40"
+          <button onClick={reloadExtensions} disabled={extLoading}
+            className="p-2.5 rounded-xl bg-zinc-800/60 border border-zinc-700/60 text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-40"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
               className={extLoading ? 'animate-spin' : ''}>
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
             </svg>
           </button>
         </div>
       </div>
 
-      {/* ── GitHub install form ──────────────────────────────────────────── */}
+      {/* GitHub install form */}
       {showGHForm && (
-        <div className="px-6 pt-4 pb-5 border-b border-zinc-800/60 shrink-0 animate-fade-in">
+        <div className="px-6 pt-4 pb-5 border-b border-zinc-800/60 shrink-0">
           <div className="flex flex-col gap-3 p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={ghUrl}
+              <input type="text" value={ghUrl}
                 onChange={(e) => { setGhUrl(e.target.value); setGhErr(null); clearInstall() }}
                 onKeyDown={(e) => e.key === 'Enter' && !isInstalling && handleGHInstall()}
-                placeholder="https://github.com/owner/repo"
-                autoFocus
-                disabled={isInstalling}
-                className="flex-1 px-3 py-2 text-xs rounded-lg bg-zinc-800 border border-zinc-700/60 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors disabled:opacity-50"
+                placeholder="https://github.com/owner/repo" autoFocus disabled={isInstalling}
+                className="flex-1 px-3 py-2 text-xs rounded-lg bg-zinc-800 border border-zinc-700/60 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
               />
-              <button
-                onClick={handleGHInstall}
-                disabled={!ghUrl.trim() || isInstalling}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent hover:bg-accent-dark text-white text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              <button onClick={handleGHInstall} disabled={!ghUrl.trim() || isInstalling}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent hover:bg-accent-dark text-white text-xs font-semibold disabled:opacity-40 transition-colors"
               >
-                {isInstalling ? (
-                  <div className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                ) : (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                )}
-                {isInstalling ? installProgressLabel() : 'Install'}
+                {isInstalling ? <div className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" /> : 'Installer'}
+                {!isInstalling ? '' : installProgressLabel()}
               </button>
             </div>
-
-            {isInstalling && installProgress?.step === 'downloading' && (
-              <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-accent transition-all duration-300"
-                  style={{ width: `${installProgress.percent ?? 0}%` }}
-                />
-              </div>
-            )}
-
-            {isInstalling && installProgress?.step === 'setting_up' && (
-              <div className="flex flex-col gap-2 px-3 py-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-3 h-3 rounded-full border-2 border-accent/40 border-t-accent animate-spin shrink-0" />
-                    <span className="text-[10px] text-zinc-400 truncate">
-                      {installProgress.message ?? 'Setting up environment…'}
-                    </span>
-                  </div>
-                  <span className="text-[9px] text-zinc-600 shrink-0">May take a few minutes</span>
-                </div>
-                {/* Indeterminate progress bar */}
-                <div className="h-0.5 rounded-full bg-zinc-700 overflow-hidden">
-                  <div className="h-full w-1/3 rounded-full bg-accent animate-[slide_1.5s_ease-in-out_infinite]" />
-                </div>
-              </div>
-            )}
-
-            {installProgress?.step === 'done' && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-950/30 border border-emerald-800/30">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-emerald-400 shrink-0">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <p className="text-[11px] text-emerald-400">Extension installed successfully!</p>
-              </div>
-            )}
-
             {ghErr && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/30 border border-red-800/30">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400 shrink-0">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <p className="text-[11px] text-red-400">{ghErr}</p>
-              </div>
+              <p className="text-[11px] text-red-400">{ghErr}</p>
             )}
-
-            <p className="text-[10px] text-zinc-600">
-              The repo must contain a <span className="font-mono text-zinc-500">manifest.json</span> and a <span className="font-mono text-zinc-500">generator.py</span> at its root.
-            </p>
+            {installProgress?.step === 'done' && (
+              <p className="text-[11px] text-emerald-400">Extension installée avec succès !</p>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Extensions list ──────────────────────────────────────────────── */}
+      {/* Extensions list */}
       <div className="flex-1 overflow-y-auto p-6">
-        {/* Hardware banner */}
         {hwInfo && <HardwareBanner info={hwInfo} />}
         {allExtensions.length === 0 && !extLoading ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/20">
@@ -384,10 +285,8 @@ export default function ModelsPage(): JSX.Element {
               <line x1="12" y1="22.08" x2="12" y2="12"/>
             </svg>
             <div className="text-center">
-              <p className="text-sm font-medium text-zinc-400">No extensions installed</p>
-              <p className="text-xs text-zinc-600 mt-1">
-                Install from GitHub or drop into <span className="font-mono text-zinc-500">%appdata%/Dodai 3D/extensions</span>
-              </p>
+              <p className="text-sm font-medium text-zinc-400">Aucune extension installée</p>
+              <p className="text-xs text-zinc-600 mt-1">Installez depuis GitHub ou déposez dans <span className="font-mono text-zinc-500">%appdata%/Dodai/extensions</span></p>
             </div>
           </div>
         ) : extLoading ? (
@@ -396,32 +295,21 @@ export default function ModelsPage(): JSX.Element {
           </div>
         ) : filteredExtensions.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-700">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
-            <p className="text-sm text-zinc-500">No results for <span className="text-zinc-300">"{search}"</span></p>
+            <p className="text-sm text-zinc-500">Aucun résultat pour <span className="text-zinc-300">"{search}"</span></p>
           </div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
             {filteredExtensions.map((ext) => (
               <ExtensionCard
-                key={ext.id}
-                ext={ext}
-                installedIds={installedVariantIds}
-                downloading={downloading}
-                disabled={isBusy}
+                key={ext.id} ext={ext} installedIds={installedVariantIds}
+                downloading={downloading} disabled={isBusy}
                 compatibility={ext.type === 'model' ? compatibility(ext.vram_gb ?? 0) : 'ok'}
-                loadError={
-                  loadErrors[ext.id] ??
-                  ext.nodes.map((n) => loadErrors[`${ext.id}/${n.id}`]).find(Boolean)
-                }
+                loadError={loadErrors[ext.id] ?? ext.nodes.map((n) => loadErrors[`${ext.id}/${n.id}`]).find(Boolean)}
                 onInstall={(node: ExtensionNode, fullId: string) => {
                   if (!node.hfRepo) return
                   setDownloading((prev) => ({ ...prev, [fullId]: { percent: 0 } }))
                   window.electron.model.download(node.hfRepo!, fullId, node.hfSkipPrefixes).then((result: { success: boolean }) => {
-                    if (!result.success) {
-                      setDownloading((prev) => { const n = { ...prev }; delete n[fullId]; return n })
-                    }
+                    if (!result.success) setDownloading((prev) => { const n = { ...prev }; delete n[fullId]; return n })
                   })
                 }}
                 onUninstallNode={async (fullId: string) => {
@@ -436,64 +324,31 @@ export default function ModelsPage(): JSX.Element {
         )}
       </div>
 
-      {/* ── Confirm uninstall extension ──────────────────────────────────── */}
+      {/* Uninstall modal */}
       {uninstallTarget && (() => {
         const ext = allExtensions.find((e) => e.id === uninstallTarget)
         const installedModels = ext?.type === 'model'
           ? ext.nodes.filter((n) => installedVariantIds.includes(`${uninstallTarget}/${n.id}`))
           : []
-
         return createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center"
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center"
             onMouseDown={(e) => { if (e.target === e.currentTarget) { setUninstallTarget(null); setModelsToDelete(new Set()) } }}
           >
-            <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm animate-fade-in" />
-            <div className="relative w-96 rounded-2xl bg-zinc-900 border border-accent/20 shadow-2xl shadow-accent/5 overflow-hidden animate-slide-up-center">
+            <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm" />
+            <div className="relative w-96 rounded-2xl bg-zinc-900 border border-accent/20 shadow-2xl overflow-hidden">
               <div className="px-5 py-5 flex flex-col gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-accent/10 border border-accent/20">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent-light">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-                      <path d="M10 11v6M14 11v6" />
-                      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
-                    </svg>
-                  </div>
-                  <div className="flex flex-col gap-1 pt-0.5">
-                    <h2 className="text-base font-semibold text-zinc-100 leading-tight">
-                      Uninstall &ldquo;{ext?.name ?? uninstallTarget}&rdquo;?
-                    </h2>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
-                      The extension folder will be permanently deleted.
-                    </p>
-                  </div>
-                </div>
-
+                <h2 className="text-base font-semibold text-zinc-100">Désinstaller "{ext?.name ?? uninstallTarget}" ?</h2>
+                <p className="text-xs text-zinc-500">Le dossier de l'extension sera supprimé définitivement.</p>
                 {installedModels.length > 0 && (
-                  <div className="flex flex-col gap-2 px-1">
-                    <p className="text-[11px] font-medium text-zinc-400">
-                      Also delete downloaded model weights:
-                    </p>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[11px] font-medium text-zinc-400">Supprimer aussi les poids téléchargés :</p>
                     {installedModels.map((v) => {
-                      const id      = `${uninstallTarget}/${v.id}`
+                      const id = `${uninstallTarget}/${v.id}`
                       const checked = modelsToDelete.has(id)
                       return (
-                        <label
-                          key={v.id}
-                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/40 cursor-pointer hover:border-zinc-600/60 transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              setModelsToDelete((prev) => {
-                                const next = new Set(prev)
-                                if (checked) next.delete(id)
-                                else next.add(id)
-                                return next
-                              })
-                            }}
+                        <label key={v.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/40 cursor-pointer">
+                          <input type="checkbox" checked={checked}
+                            onChange={() => setModelsToDelete((prev) => { const next = new Set(prev); if (checked) next.delete(id); else next.add(id); return next })}
                             className="accent-accent w-3.5 h-3.5 rounded"
                           />
                           <span className="text-xs text-zinc-200">{formatModelName(id)}</span>
@@ -502,20 +357,13 @@ export default function ModelsPage(): JSX.Element {
                     })}
                   </div>
                 )}
-
                 <div className="flex gap-2.5">
-                  <button
-                    onClick={() => { setUninstallTarget(null); setModelsToDelete(new Set()) }}
-                    className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors border border-zinc-700/50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleUninstallExtension(uninstallTarget)}
-                    className="flex-1 py-2.5 rounded-xl bg-accent hover:bg-accent-dark text-white text-sm font-semibold transition-colors shadow-lg shadow-accent/20"
-                  >
-                    Uninstall
-                  </button>
+                  <button onClick={() => { setUninstallTarget(null); setModelsToDelete(new Set()) }}
+                    className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700/80 text-zinc-400 text-sm font-medium transition-colors border border-zinc-700/50"
+                  >Annuler</button>
+                  <button onClick={() => handleUninstallExtension(uninstallTarget)}
+                    className="flex-1 py-2.5 rounded-xl bg-accent hover:bg-accent-dark text-white text-sm font-semibold transition-colors"
+                  >Désinstaller</button>
                 </div>
               </div>
             </div>
@@ -523,6 +371,39 @@ export default function ModelsPage(): JSX.Element {
           document.body
         )
       })()}
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function ModelsPage(): JSX.Element {
+  const t = useT()
+  const [mainTab, setMainTab] = useState<'llm' | '3d'>('llm')
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Tab switcher */}
+      <div className="flex items-center gap-0 px-6 pt-3 border-b border-zinc-800/60 shrink-0">
+        {(['llm', '3d'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setMainTab(tab)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              mainTab === tab
+                ? 'border-violet-500 text-zinc-100'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {tab === 'llm' ? t.models.llmTab : t.models.threeDTab}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
+        {mainTab === 'llm' ? <LLMHub /> : <ThreeDModelsTab />}
+      </div>
     </div>
   )
 }

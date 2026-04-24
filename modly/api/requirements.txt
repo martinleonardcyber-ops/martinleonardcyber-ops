@@ -17,3 +17,6 @@ pynvml>=11.0.0
 
 # LLM inference
 llama-cpp-python>=0.3.0
+
+# HTTP client (hub search + download)
+httpx>=0.27.0
