@@ -199,8 +199,8 @@ export async function runFullSetup(win: BrowserWindow, userData: string): Promis
     const requirementsPath = getRequirementsPath()
     const venvDir = getVenvDir(userData)
 
-    if (process.platform === 'win32' || app.isPackaged) {
-      // Packaged (all platforms) + Windows dev: use bundled python-build-standalone.
+    if (app.isPackaged) {
+      // Packaged (all platforms): use bundled python-build-standalone.
       // python-build-standalone is a full Python install → venv module works natively,
       // DLLs come from the installer so SAC doesn't block them.
       const pythonExe = getEmbeddedPythonExe()
@@ -215,7 +215,7 @@ export async function runFullSetup(win: BrowserWindow, userData: string): Promis
       const venvPython = getVenvPythonExe(userData)
       await installRequirements(venvPython, requirementsPath, win)
     } else {
-      // Linux / macOS dev: use system Python
+      // Dev mode (all platforms): use system Python
       win.webContents.send('setup:progress', { step: 'venv', percent: 5 })
       const python3 = findSystemPython()
       await createVenv(python3, venvDir, win)
