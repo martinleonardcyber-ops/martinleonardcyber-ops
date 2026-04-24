@@ -49,10 +49,11 @@ export class PythonBridge {
 
     this.process = spawn(pythonExecutable, ['-m', 'uvicorn', 'main:app', '--host', API_HOST, '--port', String(API_PORT)], {
       cwd: apiDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
       env: {
         ...cleanPythonEnv(),
         PYTHONUNBUFFERED:          '1',
-        // No PYTHONPATH needed — the venv's Python has its own isolated site-packages
         MODELS_DIR:                this.resolveModelsDir(),
         WORKSPACE_DIR:             this.resolveWorkspaceDir(),
         EXTENSIONS_DIR:            this.resolveExtensionsDir(),
@@ -96,7 +97,7 @@ export class PythonBridge {
     this.ready = false
     if (process.platform === 'win32') {
       const { execSync } = require('child_process')
-      try { execSync(`taskkill /PID ${proc.pid} /T /F`) } catch {}
+      try { execSync(`taskkill /PID ${proc.pid} /T /F`, { windowsHide: true }) } catch {}
     } else {
       proc.kill('SIGTERM')
     }
@@ -124,14 +125,14 @@ export class PythonBridge {
     const { execSync } = require('child_process')
 
     if (process.platform !== 'win32') {
-      try { execSync(`lsof -ti tcp:${API_PORT} | xargs kill -9 2>/dev/null || true`, { shell: true }) } catch {}
+      try { execSync(`lsof -ti tcp:${API_PORT} | xargs kill -9 2>/dev/null || true`, { shell: true, windowsHide: true }) } catch {}
       return
     }
 
     for (let attempt = 0; attempt < 3; attempt++) {
       let output = ''
       try {
-        output = execSync(`netstat -ano | findstr ":${API_PORT} "`, { encoding: 'utf8', shell: true }) as string
+        output = execSync(`netstat -ano | findstr ":${API_PORT} "`, { encoding: 'utf8', shell: true, windowsHide: true }) as string
       } catch { break }
 
       const pids = new Set<string>()
@@ -142,7 +143,7 @@ export class PythonBridge {
       if (pids.size === 0) break
 
       for (const pid of pids) {
-        try { execSync(`taskkill /PID ${pid} /T /F`, { shell: true }) } catch {}
+        try { execSync(`taskkill /PID ${pid} /T /F`, { shell: true, windowsHide: true }) } catch {}
       }
       await new Promise((r) => setTimeout(r, 300))
     }

@@ -88,11 +88,11 @@ export default function TopBar(): JSX.Element {
 
   return (
     <header
-      className="flex items-center h-9 px-3 shrink-0 drag-region"
+      className="flex items-center h-9 px-3 shrink-0 drag-region glass-panel"
       style={{
-        background: 'rgba(9,9,11,0.90)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        boxShadow: 'inset 0 -1px 0 rgba(255,255,255,0.02), 0 4px 16px rgba(0,0,0,0.2)',
+        zIndex: 20,
       }}
     >
       {/* Page breadcrumb */}

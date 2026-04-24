@@ -80,34 +80,45 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className="relative flex items-center gap-3 w-full px-3 py-[9px] rounded-xl text-[12.5px] font-medium transition-all duration-150 text-left group"
+      className="relative flex items-center gap-3 w-full px-3 py-[9px] rounded-xl text-[12.5px] font-medium transition-all duration-200 text-left group overflow-hidden"
       style={active ? {
-        background: 'linear-gradient(135deg, rgba(139,92,246,0.13) 0%, rgba(59,130,246,0.07) 100%)',
-        border: '1px solid rgba(139,92,246,0.14)',
+        background: 'linear-gradient(135deg, rgba(139,92,246,0.16) 0%, rgba(59,130,246,0.08) 100%)',
+        border: '1px solid rgba(139,92,246,0.18)',
         color: '#fff',
+        boxShadow: 'inset 0 1px 0 rgba(196,181,253,0.06), 0 2px 12px rgba(139,92,246,0.12)',
       } : {
         background: 'transparent',
         border: '1px solid transparent',
         color: '',
       }}
     >
+      {/* Active indicator line */}
       {active && (
         <span
           className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] rounded-r-full"
           style={{
             height: '55%',
             background: 'linear-gradient(180deg, #c4b5fd, #60a5fa)',
-            boxShadow: '0 0 10px rgba(139,92,246,0.8)',
+            boxShadow: '0 0 12px rgba(139,92,246,0.9), 0 0 4px rgba(139,92,246,0.5)',
           }}
         />
       )}
+
+      {/* Icon wrapper with hover glow */}
       <span
-        className="shrink-0 transition-colors"
-        style={{ color: active ? '#a78bfa' : '' }}
+        className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg transition-all duration-200"
+        style={active ? {
+          background: 'rgba(139,92,246,0.18)',
+          color: '#c4b5fd',
+          boxShadow: '0 0 8px rgba(139,92,246,0.3)',
+        } : {
+          color: '',
+        }}
       >
         {icon}
       </span>
-      <span className={active ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-200 transition-colors'}>
+
+      <span className={active ? 'text-white font-semibold' : 'text-zinc-500 group-hover:text-zinc-200 transition-colors'}>
         {label}
       </span>
     </button>
@@ -134,21 +145,27 @@ export default function Sidebar(): JSX.Element {
 
   return (
     <aside
-      className="flex flex-col shrink-0"
+      className="flex flex-col shrink-0 glass-panel"
       style={{
         width: 196,
-        background: 'linear-gradient(180deg, #0b0b0e 0%, #09090b 60%)',
-        borderRight: '1px solid rgba(255,255,255,0.04)',
+        borderRight: '1px solid rgba(255,255,255,0.05)',
+        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.02), 4px 0 24px rgba(0,0,0,0.2)',
+        zIndex: 10,
       }}
     >
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 drag-region">
-        <div className="no-drag shrink-0" style={{ filter: 'drop-shadow(0 0 10px rgba(139,92,246,0.4))' }}>
+        <div
+          className="no-drag shrink-0"
+          style={{ filter: 'drop-shadow(0 0 14px rgba(139,92,246,0.5)) drop-shadow(0 0 4px rgba(59,130,246,0.3))' }}
+        >
           <DodaiLogo />
         </div>
-        <div className="no-drag">
-          <p className="text-[14px] font-bold tracking-tight gradient-text leading-none">Dodai 3D</p>
-          <p className="text-[9px] text-zinc-700 mt-0.5 uppercase tracking-widest font-semibold">AI Platform</p>
+        <div className="no-drag leading-none">
+          <p className="text-[14px] font-bold tracking-tight gradient-text">Dodai 3D</p>
+          <p className="text-[9px] mt-[3px] font-semibold uppercase tracking-widest" style={{ color: 'rgba(139,92,246,0.4)' }}>
+            AI Platform
+          </p>
         </div>
       </div>
 

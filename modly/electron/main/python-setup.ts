@@ -106,6 +106,7 @@ function createVenv(pythonExe: string, venvDir: string, win: BrowserWindow): Pro
     const proc = spawn(pythonExe, ['-m', 'venv', venvDir], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: cleanPythonEnv(),
+      windowsHide: true,
     })
     proc.stdout?.on('data', (d: Buffer) => console.log('[venv]', d.toString().trim()))
     proc.stderr?.on('data', (d: Buffer) => console.error('[venv]', d.toString().trim()))
@@ -131,7 +132,7 @@ function installRequirements(
     const proc = spawn(
       pythonExe,
       ['-m', 'pip', 'install', '-r', requirementsPath, '--no-warn-script-location', '--progress-bar', 'off'],
-      { stdio: ['ignore', 'pipe', 'pipe'], env: cleanPythonEnv() }
+      { stdio: ['ignore', 'pipe', 'pipe'], env: cleanPythonEnv(), windowsHide: true }
     )
     let packagesInstalled = 0
     const onLine = (line: string) => {
