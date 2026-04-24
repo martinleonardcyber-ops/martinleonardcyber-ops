@@ -16,6 +16,14 @@ function IconDashboard() {
   )
 }
 
+function IconChat() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
 function IconGenerate() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -59,7 +67,7 @@ function IconSettings() {
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
 function DodaiLogo() {
-  return <img src={dodaiLogoUrl} width={28} height={28} alt="Dodai 3D" style={{ borderRadius: 6 }} />
+  return <img src={dodaiLogoUrl} width={28} height={28} alt="Dodai" style={{ borderRadius: 6 }} />
 }
 
 // ─── Nav item ─────────────────────────────────────────────────────────────────
@@ -92,7 +100,6 @@ function NavItem({
         color: '',
       }}
     >
-      {/* Active indicator line */}
       {active && (
         <span
           className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] rounded-r-full"
@@ -104,7 +111,6 @@ function NavItem({
         />
       )}
 
-      {/* Icon wrapper with hover glow */}
       <span
         className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg transition-all duration-200"
         style={active ? {
@@ -134,6 +140,7 @@ export default function Sidebar(): JSX.Element {
 
   const NAV_MAIN: { id: Page; icon: JSX.Element }[] = [
     { id: 'dashboard', icon: <IconDashboard /> },
+    { id: 'chat',      icon: <IconChat />      },
     { id: 'generate',  icon: <IconGenerate />  },
     { id: 'workflows', icon: <IconWorkflows /> },
     { id: 'models',    icon: <IconModels />    },
@@ -162,7 +169,7 @@ export default function Sidebar(): JSX.Element {
           <DodaiLogo />
         </div>
         <div className="no-drag leading-none">
-          <p className="text-[14px] font-bold tracking-tight gradient-text">Dodai 3D</p>
+          <p className="text-[14px] font-bold tracking-tight gradient-text">Dodai</p>
           <p className="text-[9px] mt-[3px] font-semibold uppercase tracking-widest" style={{ color: 'rgba(139,92,246,0.4)' }}>
             AI Platform
           </p>
@@ -208,7 +215,7 @@ export default function Sidebar(): JSX.Element {
 
         {/* Version + language toggle */}
         <div className="flex items-center justify-between px-3 pt-2">
-          <p className="text-[10px] text-zinc-700">v0.3.3</p>
+          <p className="text-[10px] text-zinc-700">v0.4.0</p>
           <button
             onClick={() => setLang(lang === 'en' ? 'fr' : 'en')}
             className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded transition-all"

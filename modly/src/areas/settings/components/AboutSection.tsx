@@ -15,7 +15,7 @@ export function AboutSection(): JSX.Element {
       <div className="grid grid-cols-2 gap-4">
 
         <Card>
-          <Row label="Dodai 3D" description={t.settings.appDesc}>
+          <Row label="Dodai" description={t.settings.appDesc}>
             <span className="text-xs font-mono text-zinc-400">{version ? `v${version}` : '—'}</span>
           </Row>
           <Row label={t.settings.docs} description={t.settings.docsDesc}>

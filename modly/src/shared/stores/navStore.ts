@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type Page = 'dashboard' | 'generate' | 'workflows' | 'models' | 'settings'
+export type Page = 'dashboard' | 'chat' | 'generate' | 'workflows' | 'models' | 'settings'
 
 interface NavState {
   currentPage: Page

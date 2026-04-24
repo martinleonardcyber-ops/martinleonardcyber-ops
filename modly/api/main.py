@@ -1,5 +1,5 @@
 """
-Modly FastAPI backend.
+Dodai FastAPI backend.
 Runs locally within the Electron app to provide AI inference endpoints.
 """
 import logging
@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi import HTTPException
 
-from routers import generation, model, optimize, status, settings, extensions, export, workflow_runs, text_generation, hardware
+from routers import generation, model, optimize, status, settings, extensions, export, workflow_runs, text_generation, hardware, llm
 
 
 @asynccontextmanager
@@ -30,7 +30,7 @@ logging.getLogger("uvicorn.access").addFilter(_StatusFilter())
 
 
 app = FastAPI(
-    title="Modly API",
+    title="Dodai API",
     version="0.3.3",
     lifespan=lifespan,
 )
@@ -52,6 +52,7 @@ app.include_router(export.router,          prefix="/export")
 app.include_router(workflow_runs.router,     prefix="/workflow-runs")
 app.include_router(text_generation.router,  prefix="/text-generate")
 app.include_router(hardware.router,         prefix="/hardware")
+app.include_router(llm.router,             prefix="/llm")
 
 # Serve generated files from workspace — dynamic so path changes take effect immediately
 @app.get("/workspace/{full_path:path}")

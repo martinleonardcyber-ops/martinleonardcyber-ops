@@ -9,7 +9,7 @@ function DodaiLogo(): JSX.Element {
   return (
     <div className="mb-8 flex flex-col items-center">
       <div style={{ filter: 'drop-shadow(0 0 24px rgba(139,92,246,0.5))' }}>
-        <img src={dodaiLogoUrl} width={72} height={72} alt="Dodai 3D" style={{ borderRadius: 16 }} />
+        <img src={dodaiLogoUrl} width={72} height={72} alt="Dodai" style={{ borderRadius: 16 }} />
       </div>
     </div>
   )
@@ -20,7 +20,7 @@ function AppHeader(): JSX.Element {
   return (
     <>
       <DodaiLogo />
-      <h1 className="text-2xl font-bold gradient-text mb-1">Dodai 3D</h1>
+      <h1 className="text-2xl font-bold gradient-text mb-1">Dodai</h1>
       <p className="text-sm text-zinc-600 mb-10 font-medium">{t.setup.starting.replace('…', '')}</p>
     </>
   )

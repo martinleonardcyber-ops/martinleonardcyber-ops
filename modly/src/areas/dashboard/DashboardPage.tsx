@@ -5,6 +5,7 @@ import { useNavStore } from '@shared/stores/navStore'
 import { useAppStore } from '@shared/stores/appStore'
 import { useFavoritesStore } from '@shared/stores/favoritesStore'
 import { useT } from '@shared/i18n'
+import { useHardware } from '@shared/hooks/useHardware'
 import axios from 'axios'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -233,6 +234,137 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
   )
 }
 
+// ─── Hardware command card ────────────────────────────────────────────────────
+
+function HardwareCard({ t }: { t: ReturnType<typeof useT> }) {
+  const { info, loading } = useHardware(6000)
+  const apiUrl = useAppStore((s) => s.apiUrl)
+  const [backendReady, setBackendReady] = useState(false)
+  const [loadedModel,  setLoadedModel]  = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    async function poll() {
+      try {
+        await axios.get(`${apiUrl}/health`, { timeout: 1500 })
+        if (active) setBackendReady(true)
+        try {
+          const { data } = await axios.get(`${apiUrl}/llm/status`, { timeout: 1500 })
+          if (active) setLoadedModel(data.model_id ?? null)
+        } catch { /* no LLM route yet */ }
+      } catch {
+        if (active) setBackendReady(false)
+      }
+      if (active) setTimeout(poll, 5000)
+    }
+    poll()
+    return () => { active = false }
+  }, [apiUrl])
+
+  const tierColor = {
+    none: { bg: 'rgba(113,113,122,0.1)', border: 'rgba(113,113,122,0.2)', text: '#71717a', dot: '#71717a' },
+    low:  { bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)', text: '#fbbf24', dot: '#fbbf24' },
+    mid:  { bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.18)', text: '#60a5fa', dot: '#60a5fa' },
+    high: { bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)', text: '#34d399', dot: '#34d399' },
+  }
+  const tier      = info?.recommended_tier ?? 'none'
+  const tc        = tierColor[tier]
+  const vramUsed  = info ? info.vram_total_gb - info.vram_free_gb : 0
+  const vramPct   = info && info.vram_total_gb > 0 ? (vramUsed / info.vram_total_gb) * 100 : 0
+  const vramColor = vramPct > 85 ? '#f87171' : vramPct > 65 ? '#fbbf24' : '#34d399'
+
+  return (
+    <div
+      className="rounded-2xl p-5 flex flex-col gap-4"
+      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">{t.dashboard.hardware}</p>
+        <div
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+          style={{ background: tc.bg, border: `1px solid ${tc.border}`, color: tc.text }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: tc.dot }} />
+          {info?.recommended_tier_label ?? (loading ? '…' : t.dashboard.noGpu)}
+        </div>
+      </div>
+
+      {/* GPU row */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-zinc-600 shrink-0">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/>
+            <path d="M6 2v4M18 2v4M6 18v4M18 18v4"/>
+          </svg>
+          <p className="text-[12px] font-semibold text-zinc-200 truncate">
+            {loading ? '—' : (info?.gpu_name ?? t.dashboard.noGpu)}
+          </p>
+        </div>
+
+        {info?.cuda_available && info.vram_total_gb > 0 && (
+          <div className="flex flex-col gap-1.5 pl-4">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-zinc-600">{t.dashboard.vramUsed}</span>
+              <span className="font-mono" style={{ color: vramColor }}>
+                {vramUsed.toFixed(1)} / {info.vram_total_gb} GB
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-1000"
+                style={{ width: `${vramPct}%`, background: `linear-gradient(90deg, ${vramColor}99, ${vramColor})` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CPU row */}
+      {info?.cpu_name && (
+        <div className="flex items-center gap-2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-zinc-600 shrink-0">
+            <rect x="4" y="4" width="16" height="16" rx="2"/>
+            <rect x="9" y="9" width="6" height="6"/>
+            <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
+          </svg>
+          <p className="text-[11px] text-zinc-500 truncate">{info.cpu_name}</p>
+          {info.ram_gb > 0 && <span className="text-[10px] font-mono text-zinc-700 shrink-0">{info.ram_gb} GB RAM</span>}
+        </div>
+      )}
+
+      {/* Backend + model status */}
+      <div
+        className="flex items-center justify-between pt-3 mt-1"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{
+              background: backendReady ? '#34d399' : '#f87171',
+              boxShadow: backendReady ? '0 0 6px rgba(52,211,153,0.7)' : '0 0 6px rgba(248,113,113,0.7)',
+            }}
+          />
+          <span className="text-[10px] text-zinc-500">{t.dashboard.backendStatus}</span>
+          <span className="text-[10px] font-semibold" style={{ color: backendReady ? '#34d399' : '#f87171' }}>
+            {backendReady ? t.dashboard.ready : t.dashboard.offline}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-zinc-600">{t.dashboard.loadedModel}:</span>
+          <span className="text-[10px] font-medium text-zinc-400 truncate max-w-28">
+            {loadedModel
+              ? loadedModel.split('/').pop()?.replace(/\.gguf$/i, '') ?? loadedModel
+              : t.dashboard.noModel}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── DashboardPage ────────────────────────────────────────────────────────────
 
 export default function DashboardPage(): JSX.Element {
@@ -299,60 +431,63 @@ export default function DashboardPage(): JSX.Element {
       <div className="relative max-w-5xl mx-auto px-8 py-8">
 
         {/* ── Hero ───────────────────────────────────────────────── */}
-        <div className="mb-8">
+        <div className="mb-7">
           <div className="flex items-center gap-2 mb-2">
             <div style={{
               width: 6, height: 6, borderRadius: '50%',
               background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
               boxShadow: '0 0 8px rgba(139,92,246,0.8)',
             }} />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Dodai 3D</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Dodai</span>
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            {t.dashboard.welcome} <span className="gradient-text">Dodai 3D</span>
+            {t.dashboard.welcome} <span className="gradient-text">Dodai</span>
           </h1>
           <p className="text-sm text-zinc-600 mt-1.5 font-medium">{t.dashboard.tagline}</p>
         </div>
 
-        {/* ── Stats ──────────────────────────────────────────────── */}
-        {!loading && allJobs.length > 0 && (
-          <div className="flex gap-3 mb-8">
+        {/* ── Command center row ─────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-4 mb-7">
+          <div className="col-span-2">
+            <HardwareCard t={t} />
+          </div>
+          <div className="flex flex-col gap-3">
             <StatCard value={allJobs.length}     label={t.dashboard.modelsGenerated} />
             <StatCard value={collections.length} label={t.dashboard.collections} />
             <StatCard value={favCount}           label={t.dashboard.favCount} />
           </div>
-        )}
+        </div>
 
         {/* ── Quick actions ───────────────────────────────────────── */}
         <div className="mb-8">
           <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3">{t.dashboard.quickStart}</p>
           <div className="grid grid-cols-4 gap-3">
             <QuickCard
+              icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+              title={t.dashboard.chat}
+              desc={t.dashboard.chatDesc}
+              gradient="linear-gradient(135deg, rgba(139,92,246,0.85), rgba(109,40,217,0.85))"
+              onClick={() => navigate('chat')}
+            />
+            <QuickCard
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
               title={t.dashboard.imageTo3D}
               desc={t.dashboard.imageTo3DDesc}
-              gradient="linear-gradient(135deg, rgba(139,92,246,0.8), rgba(109,40,217,0.8))"
-              onClick={() => navigate('generate')}
-            />
-            <QuickCard
-              icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>}
-              title={t.dashboard.textTo3D}
-              desc={t.dashboard.textTo3DDesc}
-              gradient="linear-gradient(135deg, rgba(59,130,246,0.8), rgba(37,99,235,0.8))"
+              gradient="linear-gradient(135deg, rgba(59,130,246,0.85), rgba(37,99,235,0.85))"
               onClick={() => navigate('generate')}
             />
             <QuickCard
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="12" r="2"/><path d="M7 6h4a4 4 0 014 4v4a4 4 0 01-4 4H7"/></svg>}
               title={t.dashboard.workflows}
               desc={t.dashboard.workflowsDesc}
-              gradient="linear-gradient(135deg, rgba(16,185,129,0.8), rgba(5,150,105,0.8))"
+              gradient="linear-gradient(135deg, rgba(16,185,129,0.85), rgba(5,150,105,0.85))"
               onClick={() => navigate('workflows')}
             />
             <QuickCard
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>}
-              title={t.dashboard.extensions}
-              desc={t.dashboard.extensionsDesc}
-              gradient="linear-gradient(135deg, rgba(245,158,11,0.8), rgba(217,119,6,0.8))"
+              title={t.dashboard.models}
+              desc={t.dashboard.modelsDesc}
+              gradient="linear-gradient(135deg, rgba(245,158,11,0.85), rgba(217,119,6,0.85))"
               onClick={() => navigate('models')}
             />
           </div>

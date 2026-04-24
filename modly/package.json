@@ -1,9 +1,9 @@
 {
-  "name": "dodai-3d",
+  "name": "dodai",
   "version": "0.3.3",
   "description": "Local AI-powered 3D mesh generation from images",
   "main": "./out/main/index.js",
-  "author": "Dodai 3D",
+  "author": "Dodai",
   "private": true,
   "scripts": {
     "dev": "node scripts/build-builtins.mjs && electron-vite dev",
@@ -48,8 +48,8 @@
     "vite": "^5.4.0"
   },
   "build": {
-    "appId": "com.dodai3d.app",
-    "productName": "Dodai 3D",
+    "appId": "com.dodai.app",
+    "productName": "Dodai",
     "directories": {
       "output": "dist"
     },
