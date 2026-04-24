@@ -315,7 +315,7 @@ export default function GeneratePage(): JSX.Element {
 
   function handleExport(format: 'glb' | 'obj' | 'stl' | 'ply') {
     if (!currentJob?.outputUrl) return
-    const stem = `modly-${Date.now()}`
+    const stem = `dodai-${Date.now()}`
     const link = document.createElement('a')
     if (format === 'glb') {
       link.href = `${apiUrl}${currentJob.outputUrl}`
