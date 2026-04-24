@@ -224,7 +224,7 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: 'modly-store',
+      name: 'dodai-store',
       partialize: (state) => ({
         generationOptions: state.generationOptions,
       }),

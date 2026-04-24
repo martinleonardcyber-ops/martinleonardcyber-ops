@@ -25,7 +25,7 @@ export const useFavoritesStore = create<FavoritesStore>()(
       },
     }),
     {
-      name: 'modly-favorites',
+      name: 'dodai-favorites',
       storage: {
         getItem:    (k) => { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null },
         setItem:    (k, v) => localStorage.setItem(k, JSON.stringify(v)),

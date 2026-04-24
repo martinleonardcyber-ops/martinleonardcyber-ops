@@ -1,35 +1,37 @@
 import { useEffect, useState } from 'react'
 import { Section, Card, Row, LinkButton } from '@shared/ui'
+import { useT } from '@shared/i18n'
 
 export function AboutSection(): JSX.Element {
   const [version, setVersion] = useState<string>('')
+  const t = useT()
 
   useEffect(() => {
     window.electron.app.info().then(({ version }) => setVersion(version))
   }, [])
 
   return (
-    <Section title="About" subtitle="Application information and useful resources.">
+    <Section title={t.settings.about} subtitle={t.settings.aboutDesc}>
       <div className="grid grid-cols-2 gap-4">
 
         <Card>
-          <Row label="Modly" description="Local 3D mesh generation app.">
+          <Row label="Dodai 3D" description={t.settings.appDesc}>
             <span className="text-xs font-mono text-zinc-400">{version ? `v${version}` : '—'}</span>
           </Row>
-          <Row label="Documentation" description="Guides and API reference.">
-            <LinkButton label="Open" href="https://modly3d.app" />
+          <Row label={t.settings.docs} description={t.settings.docsDesc}>
+            <LinkButton label="Open" href="https://dodai3d.app" />
           </Row>
-          <Row label="GitHub" description="Source code and issues.">
-            <LinkButton label="Open" href="https://github.com/lightningpixel/modly" />
+          <Row label={t.settings.github} description={t.settings.githubDesc}>
+            <LinkButton label="Open" href="https://github.com/martinleonardcyber-ops/dodai-3d" />
           </Row>
         </Card>
 
         <Card>
-          <Row label="Discord" description="Community support.">
+          <Row label={t.settings.discord} description={t.settings.discordDesc}>
             <LinkButton label="Join" href="https://discord.gg/FjzjRgweVk" />
           </Row>
-          <Row label="Open-source licenses" description="Third-party licenses used in this app.">
-            <LinkButton label="View" href="https://github.com/lightningpixel/modly/blob/main/LICENSE" />
+          <Row label={t.settings.licenses} description={t.settings.licensesDesc}>
+            <LinkButton label="View" href="https://github.com/martinleonardcyber-ops/dodai-3d/blob/main/LICENSE" />
           </Row>
         </Card>
 

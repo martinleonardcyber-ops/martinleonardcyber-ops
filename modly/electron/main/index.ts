@@ -46,7 +46,7 @@ function createWindow(): void {
   }
 }
 
-app.setName('Modly')
+app.setName('Dodai 3D')
 
 process.on('uncaughtException', (err) => {
   logger.error(`Uncaught exception: ${err.stack ?? err.message}`)
