@@ -3,7 +3,7 @@
   "name": "Hunyuan3D 2.0 (Image → 3D + PBR Textures)",
   "description": "Tencent's state-of-the-art image-to-3D model (2024). Generates high-fidelity meshes with full PBR texture maps (albedo, roughness, normal). Best quality available locally — rivals cloud tools like Meshy.",
   "version": "1.0.0",
-  "author": "Tencent (extension by Modly)",
+  "author": "Tencent (extension by Dodai)",
   "license": "Tencent Hunyuan Community License",
   "generator_class": "Hunyuan3Dv2Generator",
   "type": "model",

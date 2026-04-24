@@ -3,7 +3,7 @@
   "name": "TRELLIS (Image → 3D + Textures)",
   "description": "Microsoft's state-of-the-art image-to-3D model (2024). Uses Structured LATent representation to produce highly detailed meshes with PBR textures. Best open-source quality available.",
   "version": "1.0.0",
-  "author": "Microsoft Research (extension by Modly)",
+  "author": "Microsoft Research (extension by Dodai)",
   "license": "MIT",
   "generator_class": "TrellisGenerator",
   "type": "model",

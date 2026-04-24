@@ -3,7 +3,7 @@
   "name": "Shap-E (Text to 3D)",
   "description": "OpenAI's open-source text-to-3D and image-to-3D model. Generates 3D shapes from text prompts or images using implicit neural representations. Runs fully locally on your GPU.",
   "version": "1.0.0",
-  "author": "OpenAI (extension by Modly)",
+  "author": "OpenAI (extension by Dodai)",
   "license": "MIT",
   "generator_class": "ShapEGenerator",
   "type": "model",

@@ -3,7 +3,7 @@
   "name": "InstantMesh (Fast Image → 3D)",
   "description": "TencentARC's fast multi-view reconstruction model (2024). Generates a 3D mesh from a single image in seconds by synthesising 6 multi-view images then running sparse-view LRM reconstruction.",
   "version": "1.0.0",
-  "author": "TencentARC (extension by Modly)",
+  "author": "TencentARC (extension by Dodai)",
   "license": "Apache-2.0",
   "generator_class": "InstantMeshGenerator",
   "type": "model",
