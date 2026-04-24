@@ -28,17 +28,17 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
       </div>
 
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-zinc-100">Welcome to Modly</h1>
+        <h1 className="text-2xl font-bold text-zinc-100">Welcome to Dodai</h1>
         <p className="text-sm text-zinc-400 mt-2 max-w-xs leading-relaxed">
-          Your local AI 3D generation studio. Everything runs on your machine — no subscriptions, no cloud, no limits.
+          Your local AI studio — chat with LLMs and generate 3D models. Everything runs on your GPU, no subscriptions, no cloud.
         </p>
       </div>
 
       <div className="grid grid-cols-3 gap-3 w-full max-w-sm">
         {[
+          { icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z', label: 'Chat LLM' },
           { icon: 'M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18', label: 'Image → 3D' },
-          { icon: 'M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Text → 3D' },
-          { icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Gallery' },
+          { icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', label: 'Modèles' },
         ].map(({ icon, label }) => (
           <div key={label} className="flex flex-col items-center gap-2 px-3 py-3 rounded-xl bg-zinc-800/60 border border-zinc-700/40">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-violet-400">
@@ -189,27 +189,27 @@ function ReadyStep({ onDone }: { onDone: () => void }) {
       <div className="text-center">
         <h2 className="text-xl font-bold text-zinc-100">You're all set!</h2>
         <p className="text-sm text-zinc-400 mt-2 max-w-xs leading-relaxed">
-          Upload an image or type a prompt to start generating 3D models instantly.
+          Chat with local LLMs or generate 3D models — everything runs on your GPU.
         </p>
       </div>
 
       <div className="flex flex-col gap-2 w-full max-w-xs text-[11px] text-zinc-500">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />
-          Go to <span className="text-zinc-300 font-medium">Generate</span> to create your first 3D model
+          Go to <span className="text-zinc-300 font-medium">Chat</span> to talk with a local LLM
         </div>
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-          Visit <span className="text-zinc-300 font-medium">Extensions</span> to add more AI models
+          Visit <span className="text-zinc-300 font-medium">Models</span> to download AI models
         </div>
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-          Check the <span className="text-zinc-300 font-medium">Dashboard</span> to view your creations
+          Use <span className="text-zinc-300 font-medium">Generate</span> to create 3D models
         </div>
       </div>
 
       <button onClick={onDone} className="btn-gradient w-full max-w-xs py-3 rounded-xl text-sm font-semibold">
-        Open Modly
+        Open Dodai
       </button>
     </div>
   )
