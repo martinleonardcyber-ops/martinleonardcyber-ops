@@ -30,9 +30,50 @@ function formatBytes(gb: number) {
 
 // ─── Model selector panel ─────────────────────────────────────────────────────
 
+// ─── Model avatar ─────────────────────────────────────────────────────────────
+
+const MODEL_COLORS: Record<string, [string, string]> = {
+  llama:   ['#8b5cf6', '#6d28d9'],
+  mistral: ['#f59e0b', '#d97706'],
+  qwen:    ['#3b82f6', '#1d4ed8'],
+  gemma:   ['#10b981', '#059669'],
+  phi:     ['#06b6d4', '#0891b2'],
+  deepseek:['#f97316', '#ea580c'],
+  default: ['#6366f1', '#4338ca'],
+}
+
+function modelColor(name: string): [string, string] {
+  const lower = name.toLowerCase()
+  for (const [key, colors] of Object.entries(MODEL_COLORS)) {
+    if (lower.includes(key)) return colors
+  }
+  return MODEL_COLORS.default
+}
+
+function ModelAvatar({ name, size = 36 }: { name: string; size?: number }) {
+  const [from, to] = modelColor(name)
+  const initials = name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
+  return (
+    <div
+      className="shrink-0 flex items-center justify-center rounded-xl font-bold text-white"
+      style={{
+        width: size, height: size,
+        background: `linear-gradient(135deg, ${from}, ${to})`,
+        fontSize: size * 0.33,
+        boxShadow: `0 4px 12px ${from}40`,
+      }}
+    >
+      {initials}
+    </div>
+  )
+}
+
+// ─── Model panel ──────────────────────────────────────────────────────────────
+
 function ModelPanel({
   models,
   selectedId,
+  loadingModelId,
   onSelect,
   loading,
   t,
@@ -40,6 +81,7 @@ function ModelPanel({
 }: {
   models: LlmModel[]
   selectedId: string | null
+  loadingModelId: string | null
   onSelect: (id: string) => void
   loading: boolean
   t: ReturnType<typeof useT>
@@ -49,74 +91,110 @@ function ModelPanel({
     <div
       className="flex flex-col shrink-0"
       style={{
-        width: 240,
+        width: 256,
         borderRight: '1px solid rgba(255,255,255,0.05)',
-        background: 'rgba(9,9,11,0.5)',
+        background: 'rgba(9,9,11,0.6)',
       }}
     >
-      <div className="px-4 pt-5 pb-3">
+      {/* Header */}
+      <div className="px-4 pt-5 pb-3 flex items-center justify-between">
         <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">{t.chat.modelSelect}</p>
+        <button
+          onClick={onGoModels}
+          title="Télécharger des modèles"
+          className="w-6 h-6 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-1">
+      {/* List */}
+      <div className="flex-1 overflow-y-auto px-3 pb-4 flex flex-col gap-1.5">
         {loading && (
-          <div className="flex items-center gap-2 px-3 py-4 text-zinc-700 text-xs">
-            <svg className="animate-spin shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            {t.chat.loadingModel}
+          <div className="flex items-center justify-center py-8">
+            <div className="w-5 h-5 rounded-full border-2 border-zinc-800 border-t-zinc-500 animate-spin" />
           </div>
         )}
 
         {!loading && models.length === 0 && (
-          <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="1.5" strokeLinecap="round">
+          <div className="flex flex-col items-center gap-4 px-4 py-10 text-center">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               </svg>
             </div>
-            <p className="text-xs text-zinc-500">{t.chat.noModels}</p>
-            <button
-              onClick={onGoModels}
-              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg btn-gradient text-white"
-            >
-              {t.chat.goToModels}
-            </button>
+            <div>
+              <p className="text-xs font-semibold text-zinc-300 mb-1">{t.chat.noModels}</p>
+              <p className="text-[11px] text-zinc-600 leading-relaxed mb-3">Téléchargez un modèle GGUF pour commencer</p>
+              <button onClick={onGoModels} className="text-[11px] font-semibold px-4 py-2 rounded-lg btn-gradient text-white">
+                {t.chat.goToModels}
+              </button>
+            </div>
           </div>
         )}
 
-        {models.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onSelect(m.id)}
-            className="flex flex-col gap-1 px-3 py-3 rounded-xl text-left transition-all duration-150 group"
-            style={selectedId === m.id ? {
-              background: 'linear-gradient(135deg, rgba(139,92,246,0.14) 0%, rgba(59,130,246,0.07) 100%)',
-              border: '1px solid rgba(139,92,246,0.2)',
-            } : {
-              background: 'transparent',
-              border: '1px solid transparent',
-            }}
-          >
-            <div className="flex items-center gap-2">
-              {m.loaded && (
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ background: '#34d399', boxShadow: '0 0 6px rgba(52,211,153,0.8)' }}
-                />
+        {models.map((m) => {
+          const isSelected = selectedId === m.id
+          const isLoading  = loadingModelId === m.id
+          const [accentFrom] = modelColor(m.name)
+
+          return (
+            <button
+              key={m.id}
+              onClick={() => onSelect(m.id)}
+              disabled={isLoading}
+              className="flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-200 group disabled:cursor-wait"
+              style={isSelected ? {
+                background: `linear-gradient(135deg, ${accentFrom}18 0%, rgba(59,130,246,0.06) 100%)`,
+                border: `1px solid ${accentFrom}35`,
+              } : {
+                background: 'transparent',
+                border: '1px solid transparent',
+              }}
+            >
+              {/* Avatar */}
+              <div className="relative shrink-0">
+                <ModelAvatar name={m.name} size={38} />
+                {m.loaded && !isLoading && (
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950"
+                    style={{ background: '#34d399', boxShadow: '0 0 6px rgba(52,211,153,0.7)' }}
+                  />
+                )}
+                {isLoading && (
+                  <div className="absolute inset-0 rounded-xl flex items-center justify-center"
+                    style={{ background: 'rgba(9,9,11,0.7)' }}>
+                    <div className="w-4 h-4 rounded-full border-2 border-zinc-700 border-t-violet-400 animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className={`text-[12px] font-semibold truncate leading-tight ${isSelected ? 'text-white' : 'text-zinc-300 group-hover:text-white'} transition-colors`}>
+                  {m.name}
+                </p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] font-mono text-zinc-600 bg-zinc-800/60 px-1.5 py-0.5 rounded">
+                    {m.quantization}
+                  </span>
+                  <span className="text-[10px] text-zinc-600">{formatBytes(m.size_gb)}</span>
+                  {m.parameters && m.parameters !== '?' && (
+                    <span className="text-[10px] text-zinc-700">{m.parameters}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Active indicator */}
+              {isSelected && !isLoading && (
+                <div className="shrink-0 w-1.5 h-6 rounded-full" style={{ background: `${accentFrom}` }} />
               )}
-              <p className={`text-[12px] font-semibold truncate leading-none ${selectedId === m.id ? 'text-white' : 'text-zinc-300 group-hover:text-white'} transition-colors`}>
-                {m.name}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pl-3.5">
-              <span className="text-[10px] text-zinc-600 font-mono">{m.quantization}</span>
-              <span className="text-zinc-800">·</span>
-              <span className="text-[10px] text-zinc-600">{formatBytes(m.size_gb)}</span>
-            </div>
-          </button>
-        ))}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -284,10 +362,11 @@ export default function ChatPage(): JSX.Element {
   const t       = useT()
   const { navigate } = useNavStore()
 
-  const [models,       setModels]       = useState<LlmModel[]>([])
-  const [modelsLoading,setModelsLoading]= useState(true)
-  const [selectedId,   setSelectedId]  = useState<string | null>(null)
-  const [loadingModel, setLoadingModel] = useState(false)
+  const [models,         setModels]         = useState<LlmModel[]>([])
+  const [modelsLoading,  setModelsLoading]  = useState(true)
+  const [selectedId,     setSelectedId]     = useState<string | null>(null)
+  const [loadingModel,   setLoadingModel]   = useState(false)
+  const [loadingModelId, setLoadingModelId] = useState<string | null>(null)
 
   const [messages,  setMessages]  = useState<Message[]>([])
   const [input,     setInput]     = useState('')
@@ -321,11 +400,13 @@ export default function ChatPage(): JSX.Element {
   async function handleSelectModel(id: string) {
     if (id === selectedId) return
     setLoadingModel(true)
+    setLoadingModelId(id)
     setSelectedId(id)
     try {
       await axios.post(`${apiUrl}/llm/load`, { model_id: id })
     } catch { /* ignore */ } finally {
       setLoadingModel(false)
+      setLoadingModelId(null)
     }
   }
 
@@ -426,8 +507,9 @@ export default function ChatPage(): JSX.Element {
       <ModelPanel
         models={models}
         selectedId={selectedId}
+        loadingModelId={loadingModelId}
         onSelect={handleSelectModel}
-        loading={modelsLoading || loadingModel}
+        loading={modelsLoading}
         t={t}
         onGoModels={() => navigate('models')}
       />
