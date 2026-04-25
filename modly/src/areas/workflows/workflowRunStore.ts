@@ -18,6 +18,16 @@ export interface WorkflowRunState {
   error?:        string
 }
 
+export interface ExecutionLogEntry {
+  id:            string
+  nodeId:        string
+  name:          string
+  status:        'done' | 'error'
+  outputPreview?: string
+  error?:        string
+  elapsed:       number   // ms
+}
+
 const IDLE: WorkflowRunState = {
   status: 'idle', blockIndex: 0, blockTotal: 0, blockProgress: 0, blockStep: '',
 }
@@ -51,25 +61,69 @@ function topoSort(nodes: WFNode[], edges: WFEdge[]): WFNode[] {
   return result
 }
 
+// ─── LLM streaming helper ─────────────────────────────────────────────────────
+
+async function callLLM(
+  apiUrl:       string,
+  inputText:    string,
+  systemPrompt: string,
+  temperature:  number,
+  maxTokens:    number,
+  onToken?:     (partial: string) => void,
+): Promise<string> {
+  const response = await fetch(`${apiUrl}/llm/chat`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages:      [{ role: 'user', content: inputText }],
+      system_prompt: systemPrompt,
+      temperature,
+      max_tokens:    maxTokens,
+    }),
+  })
+  if (!response.body) throw new Error('No response body from LLM')
+  const reader  = response.body.getReader()
+  const decoder = new TextDecoder()
+  let result = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    const chunk = decoder.decode(value, { stream: true })
+    for (const line of chunk.split('\n')) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') break
+      try {
+        const token = JSON.parse(data).token ?? ''
+        if (token) { result += token; onToken?.(result) }
+      } catch { /* partial JSON */ }
+    }
+  }
+  return result
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 interface WorkflowRunStore {
   runState:         WorkflowRunState
   activeNodeId:     string | null
   activeWorkflowId: string | null
-  /** nodeId → workspace URL for image outputs (populated after each run) */
   nodeImageOutputs: Record<string, string>
+  nodeStatuses:     Record<string, 'done' | 'error'>
+  executionLog:     ExecutionLogEntry[]
 
   run:    (workflow: Workflow, allExtensions: WorkflowExtension[]) => Promise<void>
   cancel: () => void
   reset:  () => void
 }
 
-export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
+export const useWorkflowRunStore = create<WorkflowRunStore>((set, get) => ({
   runState:         IDLE,
   activeNodeId:     null,
   activeWorkflowId: null,
   nodeImageOutputs: {},
+  nodeStatuses:     {},
+  executionLog:     [],
 
   async run(workflow, allExtensions) {
     _cancel.current = false
@@ -77,7 +131,9 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
     const appState     = useAppStore.getState()
     const apiUrl       = appState.apiUrl
     const ordered      = topoSort(workflow.nodes, workflow.edges)
-    const execNodes    = ordered.filter((n) => n.type === 'extensionNode' && n.data.enabled)
+    const execNodes    = ordered.filter(
+      (n) => n.data.enabled && ['extensionNode', 'llmNode', 'httpNode'].includes(n.type ?? '')
+    )
 
     const selectedImagePath = appState.selectedImagePath ?? ''
     const selectedImageData = appState.selectedImageData ?? undefined
@@ -86,7 +142,9 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
     set({
       activeWorkflowId: workflow.id,
       nodeImageOutputs: {},
-      runState: { status: 'running', blockIndex: 0, blockTotal: execNodes.length, blockProgress: 0, blockStep: 'Starting…' },
+      nodeStatuses:     {},
+      executionLog:     [],
+      runState: { status: 'running', blockIndex: 0, blockTotal: execNodes.length, blockProgress: 0, blockStep: 'Démarrage…' },
     })
 
     appState.setCurrentJob({
@@ -116,18 +174,16 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
           nodeOutputs.set(node.id, { filePath: fp ?? selectedImagePath, outputType: 'image' })
         }
         if (node.type === 'textNode') {
-          nodeOutputs.set(node.id, { text: node.data.params?.text as string | undefined })
+          nodeOutputs.set(node.id, { text: node.data.params?.text as string | undefined, outputType: 'text' })
         }
         if (node.type === 'meshNode') {
           const source = node.data.params?.source as 'file' | 'current' | undefined
           if (source === 'current' && currentMeshUrl) {
             let meshFilePath: string
             if (currentMeshUrl.includes('serve-file?path=')) {
-              // URL like /optimize/serve-file?path=D%3A%5C... → extract and decode the real path
               const encoded = currentMeshUrl.split('serve-file?path=')[1]
               meshFilePath = decodeURIComponent(encoded).replace(/\\/g, '/')
             } else {
-              // URL like /workspace/Workflows/file.glb → resolve to absolute path
               const rel = currentMeshUrl.replace(/^\/workspace\//, '')
               meshFilePath = `${workspaceDir}/${rel}`
             }
@@ -143,33 +199,38 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
         if (_cancel.current) { set({ runState: IDLE, activeNodeId: null }); return }
 
         const node = execNodes[i]
-        const ext  = getWorkflowExtension(node.data.extensionId ?? '', allExtensions)
+        const t0   = Date.now()
 
-        // ── Resolve inputs ────────────────────────────────────────────────
+        set((s) => ({
+          activeNodeId: node.id,
+          runState: { ...s.runState, blockIndex: i, blockProgress: 0, blockStep: `${node.type} — démarrage…` },
+        }))
+
+        // ── Resolve inputs ──────────────────────────────────────────────────
         let nodeInputPath:     string | undefined
         let nodeInputText:     string | undefined
         let nodeInputMeshPath: string | undefined
 
         const incomingEdges = workflow.edges.filter((e) => e.target === node.id)
+        const ext = node.type === 'extensionNode'
+          ? getWorkflowExtension(node.data.extensionId ?? '', allExtensions)
+          : null
 
         if (ext?.inputs && ext.inputs.length > 1) {
-          // Multi-input: route each incoming edge by the source node's outputType
           for (const edge of incomingEdges) {
             const src = nodeOutputs.get(edge.source)
             if (!src) continue
-            if (src.outputType === 'mesh')        nodeInputMeshPath = src.filePath
-            else if (src.outputType === 'image')  nodeInputPath     = src.filePath
-            else if (src.filePath !== undefined)  nodeInputPath     = src.filePath
-            if (src.text !== undefined)           nodeInputText     = src.text
+            if (src.outputType === 'mesh')       nodeInputMeshPath = src.filePath
+            else if (src.outputType === 'image') nodeInputPath     = src.filePath
+            else if (src.filePath !== undefined) nodeInputPath     = src.filePath
+            if (src.text !== undefined)          nodeInputText     = src.text
           }
         } else {
-          // Single-input
           for (const edge of incomingEdges) {
             const src = nodeOutputs.get(edge.source)
             if (src?.filePath !== undefined) nodeInputPath = src.filePath
             if (src?.text     !== undefined) nodeInputText = src.text
           }
-          // Fallback to previous node's output
           if (nodeInputPath === undefined && nodeInputText === undefined && i > 0) {
             const prev = nodeOutputs.get(execNodes[i - 1].id)
             if (prev?.filePath !== undefined) nodeInputPath = prev.filePath
@@ -177,104 +238,178 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
           }
         }
 
-        set((s) => ({
-          activeNodeId: node.id,
-          runState: { ...s.runState, blockIndex: i, blockProgress: 0, blockStep: 'Starting…' },
-        }))
+        // ── LLM Node ───────────────────────────────────────────────────────
+        if (node.type === 'llmNode') {
+          const inputText    = nodeInputText ?? nodeInputPath ?? ''
+          const systemPrompt = (node.data.params?.systemPrompt as string | undefined) ?? 'You are a helpful AI assistant.'
+          const temperature  = (node.data.params?.temperature  as number | undefined) ?? 0.7
+          const maxTokens    = (node.data.params?.maxTokens    as number | undefined) ?? 1024
 
-        // ── Model extensions → HTTP API ───────────────────────────────────
-        // Process extensions → IPC runProcess
-        const isModelNode = ext?.type === 'model'
+          set((s) => ({ runState: { ...s.runState, blockStep: 'Génération LLM…' } }))
 
-        if (isModelNode) {
-          const activeImagePath = nodeInputPath ?? selectedImagePath
-          const base64 = selectedImageData && nodeInputPath === undefined
-            ? selectedImageData
-            : await window.electron.fs.readFileBase64(activeImagePath)
-          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-          const blob  = new Blob([bytes], { type: 'image/png' })
-          const fname = activeImagePath.split(/[\\/]/).pop() ?? 'image.png'
-
-          // For multi-input nodes: inject mesh path as params.mesh_path
-          const extraParams: Record<string, unknown> = {}
-          if (nodeInputMeshPath) {
-            const norm = nodeInputMeshPath.replace(/\\/g, '/')
-            extraParams.mesh_path = norm.startsWith(workspaceDir)
-              ? norm.slice(workspaceDir.length).replace(/^\//, '')
-              : norm
-          }
-
-          const fd = new FormData()
-          fd.append('image', blob, fname)
-          fd.append('model_id', node.data.extensionId ?? '')
-          fd.append('collection', 'Workflows')
-          fd.append('remesh', 'none')
-          fd.append('enable_texture', 'false')
-          fd.append('texture_resolution', '1024')
-          fd.append('params', JSON.stringify({ ...node.data.params, ...extraParams }))
-
-          set((s) => ({ runState: { ...s.runState, blockProgress: 5, blockStep: 'Submitting to model…' } }))
-
-          const { data } = await client.post<{ job_id: string }>(
-            '/generate/from-image', fd,
-            { headers: { 'Content-Type': 'multipart/form-data' } },
-          )
-          _activeJobId.current = data.job_id
-
-          while (true) {
-            if (_cancel.current) {
-              await client.post(`/generate/cancel/${_activeJobId.current}`).catch(() => {})
-              _activeJobId.current = null
-              set({ runState: IDLE, activeNodeId: null })
-              return
-            }
-            await new Promise((r) => setTimeout(r, 1200))
-
-            const { data: st } = await client.get<{
-              status: string; progress?: number; step?: string; output_url?: string; error?: string
-            }>(`/generate/status/${_activeJobId.current}`)
-
-            if (st.status === 'done' && st.output_url) {
-              const rel = st.output_url.replace(/^\/workspace\//, '')
-              nodeInputPath = `${workspaceDir}/${rel}`
-              _activeJobId.current = null
-              set((s) => ({ runState: { ...s.runState, blockProgress: 100, blockStep: 'Generation complete' } }))
-              break
-            }
-            if (st.status === 'error') throw new Error(st.error ?? 'Generation failed')
-
-            const total   = execNodes.length
-            const overall = total > 0
-              ? Math.round((i / total) * 100 + (st.progress ?? 0) / total)
-              : st.progress ?? 0
+          try {
+            const result = await callLLM(
+              apiUrl, inputText, systemPrompt, temperature, maxTokens,
+              (partial) => set((s) => ({ runState: { ...s.runState, blockStep: `LLM… ${partial.length} tokens` } })),
+            )
+            nodeOutputs.set(node.id, { text: result, outputType: 'text' })
+            const elapsed = Date.now() - t0
             set((s) => ({
-              runState: { ...s.runState, blockProgress: st.progress ?? s.runState.blockProgress, blockStep: st.step ?? 'Generating…' },
+              nodeStatuses:  { ...s.nodeStatuses,  [node.id]: 'done' },
+              executionLog:  [...s.executionLog, { id: crypto.randomUUID(), nodeId: node.id, name: 'LLM', status: 'done', outputPreview: result.slice(0, 120), elapsed }],
+              runState: { ...s.runState, blockProgress: 100, blockStep: 'LLM terminé' },
             }))
-            useAppStore.getState().updateCurrentJob({ status: 'generating', progress: overall, step: st.step })
+          } catch (e) {
+            const elapsed = Date.now() - t0
+            set((s) => ({
+              nodeStatuses: { ...s.nodeStatuses, [node.id]: 'error' },
+              executionLog: [...s.executionLog, { id: crypto.randomUUID(), nodeId: node.id, name: 'LLM', status: 'error', error: String(e), elapsed }],
+            }))
+            throw e
           }
 
-        } else {
-          // ── Process extension → IPC ─────────────────────────────────────
-          const parts  = (node.data.extensionId ?? '').split('/')
-          const extId  = parts[0]
-          const nodeId = parts[1] ?? ''
-          const result = await window.electron.extensions.runProcess(
-            extId,
-            { filePath: nodeInputPath, text: nodeInputText, nodeId },
-            node.data.params as Record<string, unknown>,
-          )
-          if (!result.success) throw new Error(result.error ?? 'Process extension failed')
-          nodeInputPath = result.result?.filePath ?? nodeInputPath
-          nodeInputText = result.result?.text     ?? nodeInputText
-          set((s) => ({ runState: { ...s.runState, blockProgress: 100, blockStep: 'Done' } }))
-        }
+        // ── HTTP Request Node ──────────────────────────────────────────────
+        } else if (node.type === 'httpNode') {
+          const url          = (node.data.params?.url    as string | undefined) ?? ''
+          const method       = (node.data.params?.method as string | undefined) ?? 'GET'
+          const bodyTemplate = (node.data.params?.bodyTemplate as string | undefined) ?? '{{input}}'
+          const inputText    = nodeInputText ?? nodeInputPath ?? ''
 
-        // Store output with type for downstream routing
-        const outputType = ext?.output ?? (nodeInputPath ? 'mesh' : undefined)
-        nodeOutputs.set(node.id, { filePath: nodeInputPath, text: nodeInputText, outputType })
+          if (!url) {
+            nodeOutputs.set(node.id, { text: '', outputType: 'text' })
+            continue
+          }
+
+          set((s) => ({ runState: { ...s.runState, blockStep: `${method} ${url}…` } }))
+
+          try {
+            const body = method !== 'GET'
+              ? bodyTemplate.replace('{{input}}', inputText)
+              : undefined
+
+            const res = await fetch(url, {
+              method,
+              headers: { 'Content-Type': 'application/json' },
+              body,
+            })
+            const text = await res.text()
+            nodeOutputs.set(node.id, { text, outputType: 'text' })
+            const elapsed = Date.now() - t0
+            set((s) => ({
+              nodeStatuses: { ...s.nodeStatuses,  [node.id]: 'done' },
+              executionLog: [...s.executionLog, { id: crypto.randomUUID(), nodeId: node.id, name: `HTTP ${method}`, status: 'done', outputPreview: text.slice(0, 120), elapsed }],
+              runState: { ...s.runState, blockProgress: 100, blockStep: `HTTP ${res.status}` },
+            }))
+          } catch (e) {
+            const elapsed = Date.now() - t0
+            set((s) => ({
+              nodeStatuses: { ...s.nodeStatuses, [node.id]: 'error' },
+              executionLog: [...s.executionLog, { id: crypto.randomUUID(), nodeId: node.id, name: `HTTP ${method}`, status: 'error', error: String(e), elapsed }],
+            }))
+            throw e
+          }
+
+        // ── Extension Node (3D model or process) ───────────────────────────
+        } else if (node.type === 'extensionNode') {
+          const isModelNode  = ext?.type === 'model'
+          const extName      = ext?.name ?? node.data.extensionId ?? 'Extension'
+
+          if (isModelNode) {
+            const activeImagePath = nodeInputPath ?? selectedImagePath
+            const base64 = selectedImageData && nodeInputPath === undefined
+              ? selectedImageData
+              : await window.electron.fs.readFileBase64(activeImagePath)
+            const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+            const blob  = new Blob([bytes], { type: 'image/png' })
+            const fname = activeImagePath.split(/[\\/]/).pop() ?? 'image.png'
+
+            const extraParams: Record<string, unknown> = {}
+            if (nodeInputMeshPath) {
+              const norm = nodeInputMeshPath.replace(/\\/g, '/')
+              extraParams.mesh_path = norm.startsWith(workspaceDir)
+                ? norm.slice(workspaceDir.length).replace(/^\//, '')
+                : norm
+            }
+
+            const fd = new FormData()
+            fd.append('image', blob, fname)
+            fd.append('model_id', node.data.extensionId ?? '')
+            fd.append('collection', 'Workflows')
+            fd.append('remesh', 'none')
+            fd.append('enable_texture', 'false')
+            fd.append('texture_resolution', '1024')
+            fd.append('params', JSON.stringify({ ...node.data.params, ...extraParams }))
+
+            set((s) => ({ runState: { ...s.runState, blockProgress: 5, blockStep: 'Envoi au modèle…' } }))
+
+            const { data } = await client.post<{ job_id: string }>(
+              '/generate/from-image', fd,
+              { headers: { 'Content-Type': 'multipart/form-data' } },
+            )
+            _activeJobId.current = data.job_id
+
+            while (true) {
+              if (_cancel.current) {
+                await client.post(`/generate/cancel/${_activeJobId.current}`).catch(() => {})
+                _activeJobId.current = null
+                set({ runState: IDLE, activeNodeId: null })
+                return
+              }
+              await new Promise((r) => setTimeout(r, 1200))
+
+              const { data: st } = await client.get<{
+                status: string; progress?: number; step?: string; output_url?: string; error?: string
+              }>(`/generate/status/${_activeJobId.current}`)
+
+              if (st.status === 'done' && st.output_url) {
+                const rel = st.output_url.replace(/^\/workspace\//, '')
+                nodeInputPath = `${workspaceDir}/${rel}`
+                _activeJobId.current = null
+                set((s) => ({ runState: { ...s.runState, blockProgress: 100, blockStep: 'Génération terminée' } }))
+                break
+              }
+              if (st.status === 'error') throw new Error(st.error ?? 'Generation failed')
+
+              const total   = execNodes.length
+              const overall = total > 0
+                ? Math.round((i / total) * 100 + (st.progress ?? 0) / total)
+                : st.progress ?? 0
+              set((s) => ({
+                runState: { ...s.runState, blockProgress: st.progress ?? s.runState.blockProgress, blockStep: st.step ?? 'Génération…' },
+              }))
+              useAppStore.getState().updateCurrentJob({ status: 'generating', progress: overall, step: st.step })
+            }
+
+          } else {
+            const parts  = (node.data.extensionId ?? '').split('/')
+            const extId  = parts[0]
+            const nodeId = parts[1] ?? ''
+            const result = await window.electron.extensions.runProcess(
+              extId,
+              { filePath: nodeInputPath, text: nodeInputText, nodeId },
+              node.data.params as Record<string, unknown>,
+            )
+            if (!result.success) throw new Error(result.error ?? 'Process extension failed')
+            nodeInputPath = result.result?.filePath ?? nodeInputPath
+            nodeInputText = result.result?.text     ?? nodeInputText
+            set((s) => ({ runState: { ...s.runState, blockProgress: 100, blockStep: 'Terminé' } }))
+          }
+
+          const outputType = ext?.output ?? (nodeInputPath ? 'mesh' : undefined)
+          nodeOutputs.set(node.id, { filePath: nodeInputPath, text: nodeInputText, outputType })
+
+          const elapsed = Date.now() - t0
+          set((s) => ({
+            nodeStatuses: { ...s.nodeStatuses,  [node.id]: 'done' },
+            executionLog: [...s.executionLog, {
+              id: crypto.randomUUID(), nodeId: node.id, name: extName, status: 'done',
+              outputPreview: nodeInputPath ?? nodeInputText?.slice(0, 120), elapsed,
+            }],
+          }))
+        }
       }
 
-      // ── Collect image outputs for preview nodes ───────────────────────
+      // ── Collect image outputs for preview nodes ─────────────────────────
       const imageOutputs: Record<string, string> = {}
       for (const [nodeId, out] of nodeOutputs) {
         if (out.outputType === 'image' && out.filePath) {
@@ -285,7 +420,7 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
         }
       }
 
-      // ── Resolve final output URL ──────────────────────────────────────
+      // ── Resolve final output URL ────────────────────────────────────────
       let outputUrl:  string | undefined
       let outputPath: string | undefined
 
@@ -323,7 +458,7 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
           blockIndex:    execNodes.length > 0 ? execNodes.length - 1 : 0,
           blockTotal:    execNodes.length,
           blockProgress: 100,
-          blockStep:     'Done',
+          blockStep:     'Terminé',
           outputUrl,
           outputPath,
         },
@@ -345,10 +480,10 @@ export const useWorkflowRunStore = create<WorkflowRunStore>((set) => ({
       axios.create({ baseURL: apiUrl }).post(`/generate/cancel/${_activeJobId.current}`).catch(() => {})
       _activeJobId.current = null
     }
-    set({ runState: IDLE, activeNodeId: null, activeWorkflowId: null, nodeImageOutputs: {} })
+    set({ runState: IDLE, activeNodeId: null, activeWorkflowId: null, nodeImageOutputs: {}, nodeStatuses: {} })
   },
 
   reset() {
-    set({ runState: IDLE, activeNodeId: null, activeWorkflowId: null, nodeImageOutputs: {} })
+    set({ runState: IDLE, activeNodeId: null, activeWorkflowId: null, nodeImageOutputs: {}, nodeStatuses: {}, executionLog: [] })
   },
 }))

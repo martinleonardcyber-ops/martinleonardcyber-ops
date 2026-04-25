@@ -4,7 +4,8 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
-
+  MiniMap,
+  Controls,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -27,13 +28,16 @@ import TextNode         from './nodes/TextNode'
 import AddToSceneNode   from './nodes/AddToSceneNode'
 import Load3DMeshNode   from './nodes/Load3DMeshNode'
 import PreviewImageNode from './nodes/PreviewImageNode'
+import LLMNode          from './nodes/LLMNode'
+import HttpNode         from './nodes/HttpNode'
 import WorkflowEdge     from './nodes/WorkflowEdge'
+import type { ExecutionLogEntry } from './workflowRunStore'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DRAG_KEY      = 'modly/extension-id'
 const DRAG_NODE_KEY = 'modly/node-type'
-const NODE_TYPES = { extensionNode: ExtensionNode, imageNode: ImageNode, textNode: TextNode, outputNode: AddToSceneNode, meshNode: Load3DMeshNode, previewNode: PreviewImageNode }
+const NODE_TYPES = { extensionNode: ExtensionNode, imageNode: ImageNode, textNode: TextNode, outputNode: AddToSceneNode, meshNode: Load3DMeshNode, previewNode: PreviewImageNode, llmNode: LLMNode, httpNode: HttpNode }
 const EDGE_TYPES = { workflowEdge: WorkflowEdge }
 
 const DEFAULT_EDGE_OPTS = { type: 'workflowEdge' }
@@ -152,6 +156,8 @@ const PANEL_MAX = 860
 const PANEL_BUILTIN_NODES = [
   { type: 'imageNode',   label: 'Image',         color: '#38bdf8', icon: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
   { type: 'textNode',    label: 'Text',           color: '#fbbf24', icon: <><path d="M17 6.1H3M21 12.1H3M15.1 18H3"/></> },
+  { type: 'llmNode',    label: 'LLM',            color: '#a78bfa', icon: <><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></> },
+  { type: 'httpNode',   label: 'HTTP Request',   color: '#2dd4bf', icon: <><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></> },
   { type: 'meshNode',    label: 'Load 3D Mesh',   color: '#a78bfa', icon: <><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></> },
   { type: 'outputNode',  label: 'Add to Scene',   color: '#a78bfa', icon: <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></> },
   { type: 'previewNode', label: 'Preview Views',  color: '#38bdf8', icon: <><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></> },
@@ -393,11 +399,13 @@ function PanelToggleIcon({ open }: { open: boolean }) {
 // ─── Node palette (Space to open) ────────────────────────────────────────────
 
 const BUILTIN_NODES = [
-  { type: 'imageNode',   label: 'Image',         color: '#38bdf8', description: 'Image input' },
-  { type: 'textNode',    label: 'Text',           color: '#fbbf24', description: 'Text input' },
-  { type: 'meshNode',    label: 'Load 3D Mesh',   color: '#a78bfa', description: 'Load a 3D mesh file or use current model' },
-  { type: 'outputNode',  label: 'Add to Scene',   color: '#a78bfa', description: 'Output node — adds the mesh to the 3D scene' },
-  { type: 'previewNode', label: 'Preview Views',  color: '#38bdf8', description: 'Displays multi-view image outputs in a 2×3 grid' },
+  { type: 'imageNode',   label: 'Image',         color: '#38bdf8', description: 'Source : image locale en entrée du workflow' },
+  { type: 'textNode',    label: 'Text',           color: '#fbbf24', description: 'Source : texte statique en entrée du workflow' },
+  { type: 'llmNode',    label: 'LLM',            color: '#a78bfa', description: 'Génère du texte avec le modèle LLM local chargé' },
+  { type: 'httpNode',   label: 'HTTP Request',   color: '#2dd4bf', description: 'Appel GET/POST vers une API externe' },
+  { type: 'meshNode',    label: 'Load 3D Mesh',   color: '#a78bfa', description: 'Charge un fichier .glb/.obj/.ply ou le modèle 3D actuel' },
+  { type: 'outputNode',  label: 'Add to Scene',   color: '#a78bfa', description: 'Sortie finale — charge le mesh dans la scène 3D' },
+  { type: 'previewNode', label: 'Preview Views',  color: '#38bdf8', description: 'Affiche les images multi-vues en grille 2×3' },
 ]
 
 type PaletteItem =
@@ -735,6 +743,91 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── Execution log panel ─────────────────────────────────────────────────────
+
+function ExecutionLogPanel({ log, error, onClose }: { log: ExecutionLogEntry[]; error?: string; onClose: () => void }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  return (
+    <div
+      className="flex flex-col shrink-0 border-t border-zinc-800 bg-zinc-950/60 backdrop-blur-sm"
+      style={{ maxHeight: 220 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/60 shrink-0">
+        <div className="flex items-center gap-2">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-500">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Execution Log</span>
+          {log.length > 0 && (
+            <span className="text-[10px] text-zinc-600 font-mono">{log.length} nœud{log.length > 1 ? 's' : ''}</span>
+          )}
+        </div>
+        <button onClick={onClose} className="p-1 rounded text-zinc-600 hover:text-zinc-300 transition-colors">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Entries */}
+      <div className="overflow-y-auto flex-1">
+        {error && (
+          <div className="flex items-start gap-3 px-4 py-2.5 border-b border-zinc-800/40">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" className="shrink-0 mt-0.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            <span className="text-[11px] text-red-400 font-mono leading-relaxed">{error}</span>
+          </div>
+        )}
+        {log.length === 0 && !error && (
+          <div className="flex items-center justify-center py-6 text-[11px] text-zinc-600">
+            Aucune exécution pour ce workflow
+          </div>
+        )}
+        {log.map((entry) => (
+          <div key={entry.id} className="border-b border-zinc-800/30">
+            <button
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-800/20 transition-colors"
+              onClick={() => setExpanded((e) => e === entry.id ? null : entry.id)}
+            >
+              {entry.status === 'done' ? (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" className="shrink-0">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              ) : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" className="shrink-0">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              )}
+              <span className="text-[11px] font-medium text-zinc-300 w-28 shrink-0 truncate">{entry.name}</span>
+              <span className="text-[10px] font-mono text-zinc-600 w-12 shrink-0">{entry.elapsed}ms</span>
+              <span className="text-[11px] text-zinc-500 truncate flex-1 font-mono">
+                {entry.error ?? entry.outputPreview}
+              </span>
+              <svg
+                width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                className={`shrink-0 text-zinc-700 transition-transform ${expanded === entry.id ? 'rotate-180' : ''}`}
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {expanded === entry.id && (
+              <div className="px-4 pb-3 pt-1">
+                <pre className="text-[11px] text-zinc-400 font-mono leading-relaxed whitespace-pre-wrap break-all"
+                  style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px' }}>
+                  {entry.error ?? entry.outputPreview ?? '(no output)'}
+                </pre>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Connection type helpers ──────────────────────────────────────────────────
 
 function getNodeOutputType(node: Node | undefined, allExts: WorkflowExtension[]): string | undefined {
@@ -742,6 +835,8 @@ function getNodeOutputType(node: Node | undefined, allExts: WorkflowExtension[])
   if (node.type === 'imageNode') return 'image'
   if (node.type === 'meshNode')  return 'mesh'
   if (node.type === 'textNode')  return 'text'
+  if (node.type === 'llmNode')   return 'text'
+  if (node.type === 'httpNode')  return 'text'
   return allExts.find((e) => e.id === (node.data as WFNodeData)?.extensionId)?.output
 }
 
@@ -777,14 +872,15 @@ function WorkflowCanvasInner({
   onImport:         () => void
 }) {
   const { screenToFlowPosition, updateNodeData, getNode } = useReactFlow()
-  const { runState, run: runWorkflow, cancel } = useWorkflowRunStore()
+  const { runState, executionLog, run: runWorkflow, cancel } = useWorkflowRunStore()
   const isRunning = runState.status === 'running'
 
   const [nodes, setNodes, onNodesChange] = useNodesState(workflow.nodes as Node[])
   const [edges, setEdges, onEdgesChange] = useEdgesState(workflow.edges as Edge[])
-  const [name, setName]       = useState(workflow.name)
+  const [name, setName]           = useState(workflow.name)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [helpOpen, setHelpOpen] = useState(false)
+  const [helpOpen, setHelpOpen]   = useState(false)
+  const [logOpen, setLogOpen]     = useState(false)
 
   // Pending connection: set when user drags a handle and releases on empty canvas
   const pendingConnectionRef  = useRef<OnConnectStartParams | null>(null)
@@ -977,13 +1073,14 @@ function WorkflowCanvasInner({
 
   const handleRun = useCallback(() => {
     if (isRunning) { cancel(); return }
+    setLogOpen(true)
     const wf: Workflow = { ...workflow, name, nodes: nodes as WFNode[], edges: edges as WFEdge[], updatedAt: new Date().toISOString() }
     onSave(wf)
     runWorkflow(wf, allExtensions)
   }, [workflow, name, nodes, edges, onSave, allExtensions, isRunning, runWorkflow, cancel])
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-hidden" style={{ minHeight: 0 }}>
 
       {paletteOpen && (
         <NodePalette
@@ -1096,6 +1193,21 @@ function WorkflowCanvasInner({
             </div>
           )}
 
+          {/* Log toggle */}
+          <button
+            onClick={() => setLogOpen((v) => !v)}
+            title="Execution log"
+            className={`p-2.5 rounded-lg border transition-colors ${
+              logOpen
+                ? 'bg-violet-900/20 border-violet-700/40 text-violet-400'
+                : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 border-zinc-800 hover:border-zinc-700'
+            }`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </button>
+
           {/* Export */}
           <button
             onClick={onExport}
@@ -1133,7 +1245,8 @@ function WorkflowCanvasInner({
 
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
 
-      {/* React Flow canvas */}
+      {/* React Flow canvas + log panel */}
+      <div className="flex flex-col flex-1 overflow-hidden" style={{ minHeight: 0 }}>
       <div className="flex-1 relative" onDragOver={onDragOver} onDrop={onDrop}>
 
         {/* No model node warning */}
@@ -1181,7 +1294,27 @@ function WorkflowCanvasInner({
           className="bg-[#0f0f10]"
         >
           <Background color="#27272a" gap={24} size={1} />
+          <MiniMap
+            nodeColor={() => '#3f3f46'}
+            maskColor="rgba(9,9,11,0.7)"
+            style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 10 }}
+            className="!bottom-3 !right-12"
+          />
+          <Controls
+            showInteractive={false}
+            style={{ bottom: 12, left: 12, background: '#18181b', border: '1px solid #27272a', borderRadius: 10 }}
+          />
         </ReactFlow>
+      </div>
+
+      {/* Execution log panel */}
+      {logOpen && (
+        <ExecutionLogPanel
+          log={executionLog}
+          error={runState.status === 'error' ? runState.error : undefined}
+          onClose={() => setLogOpen(false)}
+        />
+      )}
       </div>
     </div>
   )

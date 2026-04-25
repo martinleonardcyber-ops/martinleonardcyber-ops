@@ -10,6 +10,7 @@ export interface BaseNodeProps {
   id:       string
   selected?: boolean
   running?:  boolean
+  nodeStatus?: 'done' | 'error'
 
   // Header
   title:  string
@@ -39,7 +40,7 @@ export interface BaseNodeProps {
 // ─── BaseNode ─────────────────────────────────────────────────────────────────
 
 export default function BaseNode({
-  id, selected, running,
+  id, selected, running, nodeStatus,
   title, icon, badge,
   enabled, showInGenerate,
   deletable       = true,
@@ -62,9 +63,11 @@ export default function BaseNode({
       ref={rootRef}
       style={autoHeight ? { width: '100%' } : { width: '100%', height: '100%' }}
       className={`relative rounded-xl border bg-zinc-900/95 backdrop-blur-sm shadow-xl transition-all flex flex-col
-        ${running    ? 'border-accent shadow-[0_0_16px_rgba(99,102,241,0.35)] animate-pulse'
-        : selected   ? 'border-accent/70'
-        : isDisabled ? 'border-zinc-800 opacity-50'
+        ${running                    ? 'border-accent shadow-[0_0_16px_rgba(99,102,241,0.35)] animate-pulse'
+        : nodeStatus === 'done'      ? 'border-emerald-500/50 shadow-[0_0_12px_rgba(52,211,153,0.15)]'
+        : nodeStatus === 'error'     ? 'border-red-500/50 shadow-[0_0_12px_rgba(239,68,68,0.15)]'
+        : selected                   ? 'border-accent/70'
+        : isDisabled                 ? 'border-zinc-800 opacity-50'
         : 'border-zinc-700'}`}
     >
       <NodeResizer
@@ -86,7 +89,21 @@ export default function BaseNode({
             </svg>
           </div>
         )}
-        {!running && icon && <div className="shrink-0 mt-0.5">{icon}</div>}
+        {!running && nodeStatus === 'done' && (
+          <div className="shrink-0 mt-0.5">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+        )}
+        {!running && nodeStatus === 'error' && (
+          <div className="shrink-0 mt-0.5">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </div>
+        )}
+        {!running && !nodeStatus && icon && <div className="shrink-0 mt-0.5">{icon}</div>}
 
         <div className="flex-1 min-w-0">
           <p className="text-[11px] font-semibold text-zinc-200 leading-tight truncate">{title}</p>
