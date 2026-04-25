@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useWorkflowUIStore } from './workflowUIStore'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -14,6 +15,7 @@ import {
   type Node,
   type Edge,
   type OnConnectStartParams,
+  type NodeChange,
 } from '@xyflow/react'
 import { useWorkflowsStore } from '@shared/stores/workflowsStore'
 import { useExtensionsStore } from '@shared/stores/extensionsStore'
@@ -743,6 +745,83 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── Context menu ────────────────────────────────────────────────────────────
+
+interface CtxMenu {
+  x:             number
+  y:             number
+  type:          'canvas' | 'node'
+  nodeId?:       string
+  flowPos?:      { x: number; y: number }
+  hasClipboard?: boolean
+}
+
+function ContextMenuOverlay({ menu, onClose, onAction }: {
+  menu:     CtxMenu
+  onClose:  () => void
+  onAction: (action: string, nodeId?: string) => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [onClose])
+
+  const x = Math.min(menu.x, window.innerWidth  - 200)
+  const y = Math.min(menu.y, window.innerHeight - 240)
+
+  const Item = ({ label, shortcut, onClick, danger = false, disabled = false }: {
+    label: string; shortcut?: string; onClick: () => void; danger?: boolean; disabled?: boolean
+  }) => (
+    <button
+      onClick={() => { if (!disabled) { onClick(); onClose() } }}
+      disabled={disabled}
+      className={`w-full flex items-center justify-between gap-6 px-3 py-2 text-left text-[12px] transition-colors rounded-lg
+        ${danger   ? 'text-red-400 hover:bg-red-950/30'
+        : disabled ? 'text-zinc-700 cursor-not-allowed'
+        : 'text-zinc-200 hover:bg-zinc-700/60'}`}
+    >
+      <span>{label}</span>
+      {shortcut && <span className="text-[10px] text-zinc-600 font-mono shrink-0">{shortcut}</span>}
+    </button>
+  )
+
+  return createPortal(
+    <div
+      ref={ref}
+      className="fixed z-[300] py-1.5 px-1.5"
+      style={{
+        left: x, top: y,
+        background: '#1c1c1f',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 12,
+        minWidth: 190,
+        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+      }}
+    >
+      {menu.type === 'canvas' ? (
+        <>
+          <Item label="Ajouter un node"    shortcut="Space"   onClick={() => onAction('addNode')} />
+          <div className="my-1 h-px bg-zinc-800 mx-1" />
+          <Item label="Coller"             shortcut="Ctrl+V"  onClick={() => onAction('paste')} disabled={!menu.hasClipboard} />
+          <Item label="Tout sélectionner"  shortcut="Ctrl+A"  onClick={() => onAction('selectAll')} />
+        </>
+      ) : (
+        <>
+          <Item label="Copier"      shortcut="Ctrl+C" onClick={() => onAction('copy',      menu.nodeId)} />
+          <Item label="Dupliquer"   shortcut="Ctrl+D" onClick={() => onAction('duplicate', menu.nodeId)} />
+          <div className="my-1 h-px bg-zinc-800 mx-1" />
+          <Item label="Supprimer"   shortcut="Del"    onClick={() => onAction('delete',    menu.nodeId)} danger />
+        </>
+      )}
+    </div>,
+    document.body,
+  )
+}
+
 // ─── Execution log panel ─────────────────────────────────────────────────────
 
 function ExecutionLogPanel({ log, error, onClose }: { log: ExecutionLogEntry[]; error?: string; onClose: () => void }) {
@@ -871,16 +950,20 @@ function WorkflowCanvasInner({
   onNew:            () => void
   onImport:         () => void
 }) {
-  const { screenToFlowPosition, updateNodeData, getNode } = useReactFlow()
+  const { screenToFlowPosition, flowToScreenPosition, updateNodeData, getNode, getNodes, getEdges, setNodes: setNodesRF } = useReactFlow()
   const { runState, executionLog, run: runWorkflow, cancel } = useWorkflowRunStore()
+  const { paletteSourceNodeId, paletteSourceHandleId, clearPaletteSource, clipboard, setClipboard } = useWorkflowUIStore()
   const isRunning = runState.status === 'running'
 
   const [nodes, setNodes, onNodesChange] = useNodesState(workflow.nodes as Node[])
   const [edges, setEdges, onEdgesChange] = useEdgesState(workflow.edges as Edge[])
-  const [name, setName]           = useState(workflow.name)
+  const [name, setName]             = useState(workflow.name)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [helpOpen, setHelpOpen]   = useState(false)
-  const [logOpen, setLogOpen]     = useState(false)
+  const [helpOpen, setHelpOpen]     = useState(false)
+  const [logOpen, setLogOpen]       = useState(false)
+  const [contextMenu, setContextMenu] = useState<CtxMenu | null>(null)
+
+  const lastMouseFlowPos = useRef<{ x: number; y: number }>({ x: 300, y: 200 })
 
   // Pending connection: set when user drags a handle and releases on empty canvas
   const pendingConnectionRef  = useRef<OnConnectStartParams | null>(null)
@@ -963,6 +1046,95 @@ function WorkflowCanvasInner({
   const canUndo = histIdx > 0
   const canRedo = histIdx < historyRef.current.length - 1
 
+  // ── "+" button on nodes → open palette pre-wired to source node ──────────
+  useEffect(() => {
+    if (!paletteSourceNodeId) return
+    const node = getNode(paletteSourceNodeId)
+    if (node) {
+      // Place new node to the right of the source
+      const w = (node.measured as { width?: number } | undefined)?.width ?? 220
+      const h = (node.measured as { height?: number } | undefined)?.height ?? 100
+      const screenPos = flowToScreenPosition({
+        x: node.position.x + w + 80,
+        y: node.position.y + h / 2,
+      })
+      setPendingDropPos(screenPos)
+    }
+    pendingConnectionRef.current = {
+      nodeId:     paletteSourceNodeId,
+      handleId:   paletteSourceHandleId ?? 'output',
+      handleType: 'source',
+    }
+    clearPaletteSource()
+    setPaletteOpen(true)
+  }, [paletteSourceNodeId])
+
+  // ── Copy / Paste / Duplicate helpers ─────────────────────────────────────
+  const copySelected = useCallback(() => {
+    const selected = nodes.filter((n) => n.selected)
+    if (!selected.length) return
+    const ids = new Set(selected.map((n) => n.id))
+    const selEdges = edges.filter((e) => ids.has(e.source) && ids.has(e.target))
+    setClipboard(selected, selEdges)
+  }, [nodes, edges, setClipboard])
+
+  const pasteClipboard = useCallback(() => {
+    if (!clipboard.nodes.length) return
+    const idMap = new Map<string, string>()
+    clipboard.nodes.forEach((n) => idMap.set(n.id, newId()))
+
+    const newNodes: Node[] = clipboard.nodes.map((n) => ({
+      ...n,
+      id:       idMap.get(n.id)!,
+      position: { x: n.position.x + 40, y: n.position.y + 40 },
+      selected: true,
+      data:     { ...n.data },
+    }))
+    const newEdges: Edge[] = clipboard.edges.map((e) => ({
+      ...e,
+      id:     newId(),
+      source: idMap.get(e.source)!,
+      target: idMap.get(e.target)!,
+    }))
+    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), ...newNodes])
+    setEdges((es) => [...es, ...newEdges])
+  }, [clipboard, setNodes, setEdges])
+
+  const duplicateNode = useCallback((nodeId: string) => {
+    const node = getNode(nodeId)
+    if (!node) return
+    const copy: Node = {
+      ...node,
+      id:       newId(),
+      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      selected: true,
+      data:     { ...node.data },
+    }
+    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), copy])
+  }, [getNode, setNodes])
+
+  const deleteNodeById = useCallback((nodeId: string) => {
+    setNodes((ns) => ns.filter((n) => n.id !== nodeId))
+    setEdges((es) => es.filter((e) => e.source !== nodeId && e.target !== nodeId))
+  }, [setNodes, setEdges])
+
+  const handleContextAction = useCallback((action: string, nodeId?: string) => {
+    switch (action) {
+      case 'addNode':
+        if (contextMenu?.flowPos) setPendingDropPos(
+          flowToScreenPosition(contextMenu.flowPos)
+        )
+        setPaletteOpen(true)
+        break
+      case 'paste':       pasteClipboard(); break
+      case 'selectAll':   setNodes((ns) => ns.map((n) => ({ ...n, selected: true }))); break
+      case 'copy':        if (nodeId) { const n = getNode(nodeId); if (n) setClipboard([n], []) } break
+      case 'duplicate':   if (nodeId) duplicateNode(nodeId); break
+      case 'delete':      if (nodeId) deleteNodeById(nodeId); break
+    }
+    setContextMenu(null)
+  }, [contextMenu, flowToScreenPosition, pasteClipboard, setNodes, getNode, setClipboard, duplicateNode, deleteNodeById])
+
   const isValidConnection = useCallback((connection: Connection) => {
     const srcType = getNodeOutputType(getNode(connection.source) as Node, allExtensions)
     const tgtType = getNodeInputType(getNode(connection.target) as Node, connection.targetHandle, allExtensions)
@@ -1022,29 +1194,25 @@ function WorkflowCanvasInner({
     }])
   }, [screenToFlowPosition, setNodes])
 
-  // Keyboard shortcuts (Space, Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
+  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.code === 'Space') {
-        e.preventDefault()
-        setPaletteOpen(true)
-        return
-      }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-        e.preventDefault()
-        undo()
-        return
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
-        e.preventDefault()
-        redo()
-      }
+      const ctrl = e.ctrlKey || e.metaKey
+
+      if (e.code === 'Space')                                        { e.preventDefault(); setPaletteOpen(true); return }
+      if (ctrl && !e.shiftKey && e.key === 'z')                     { e.preventDefault(); undo();            return }
+      if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redo();            return }
+      if (ctrl && e.key === 'a')                                     { e.preventDefault(); setNodes((ns) => ns.map((n) => ({ ...n, selected: true }))); return }
+      if (ctrl && e.key === 'c')                                     { copySelected();    return }
+      if (ctrl && e.key === 'v')                                     { pasteClipboard();  return }
+      if (ctrl && e.key === 'd')                                     { e.preventDefault(); const sel = nodes.filter((n) => n.selected); sel.forEach((n) => duplicateNode(n.id)); return }
+      if (e.key === 'Escape')                                        { setContextMenu(null); return }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, nodes, copySelected, pasteClipboard, duplicateNode])
 
   const addNodeFromPalette = useCallback((type: string, extensionId?: string) => {
     const position = screenToFlowPosition(
@@ -1249,14 +1417,52 @@ function WorkflowCanvasInner({
       <div className="flex flex-col flex-1 overflow-hidden" style={{ minHeight: 0 }}>
       <div className="flex-1 relative" onDragOver={onDragOver} onDrop={onDrop}>
 
+        {/* Context menu */}
+        {contextMenu && (
+          <ContextMenuOverlay
+            menu={contextMenu}
+            onClose={() => setContextMenu(null)}
+            onAction={handleContextAction}
+          />
+        )}
+
+        {/* Empty canvas prompt */}
+        {nodes.length === 0 && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+            <div className="pointer-events-auto flex flex-col items-center gap-4 select-none">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                style={{ background: 'rgba(39,39,42,0.6)', border: '2px dashed #3f3f46' }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#52525b" strokeWidth="1.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-semibold text-zinc-400">Canvas vide</p>
+                <p className="text-[11px] text-zinc-600 mt-1">Glissez depuis le panneau ou appuyez sur Space</p>
+              </div>
+              <button
+                onClick={() => setPaletteOpen(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white btn-gradient transition-all"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Ajouter un node
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* No model node warning */}
-        {!nodes.some((n) => n.type === 'extensionNode' && allExtensions.find((e) => e.id === (n.data as WFNodeData).extensionId && e.type === 'model')) && (
+        {nodes.length > 0 && !nodes.some((n) => n.type === 'extensionNode' && allExtensions.find((e) => e.id === (n.data as WFNodeData).extensionId && e.type === 'model')) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent/10 border border-accent/20 text-accent-light whitespace-nowrap">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
               </svg>
-              <span className="text-[10px] font-medium">No AI model node in this workflow — add one from the extensions panel to generate a 3D mesh.</span>
+              <span className="text-[10px] font-medium">Aucun node IA dans ce workflow — ajoutez-en un depuis le panneau Extensions pour générer un mesh 3D.</span>
             </div>
           </div>
         )}
@@ -1285,6 +1491,20 @@ function WorkflowCanvasInner({
           isValidConnection={isValidConnection}
           onConnectEnd={onConnectEnd}
           onEdgeContextMenu={(e, edge) => { e.preventDefault(); setEdges((eds) => eds.filter((ed) => ed.id !== edge.id)) }}
+          onNodeContextMenu={(e, node) => {
+            e.preventDefault()
+            setContextMenu({ x: e.clientX, y: e.clientY, type: 'node', nodeId: node.id })
+          }}
+          onPaneContextMenu={(e) => {
+            e.preventDefault()
+            const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+            setContextMenu({ x: e.clientX, y: e.clientY, type: 'canvas', flowPos: pos, hasClipboard: clipboard.nodes.length > 0 })
+          }}
+          onPaneClick={() => setContextMenu(null)}
+          onNodeClick={() => setContextMenu(null)}
+          onMouseMove={(e) => {
+            lastMouseFlowPos.current = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+          }}
           defaultEdgeOptions={DEFAULT_EDGE_OPTS}
           deleteKeyCode="Delete"
           connectionLineStyle={{ stroke: '#71717a', strokeWidth: 1.5 }}
