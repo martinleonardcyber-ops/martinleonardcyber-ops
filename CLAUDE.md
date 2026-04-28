@@ -2,36 +2,50 @@
 
 ## Project overview
 
-**Dodai 3D** is a local, open-source desktop app (Electron + React + FastAPI) for AI-powered 3D mesh generation from images, with a built-in local LLM chat. Think LM Studio / Ollama but for 3D — simple, professional, GPU-accelerated.
+**Dodai 3D** is a local desktop app (Electron + React + FastAPI) for AI-powered 3D mesh generation from images, with a built-in local LLM chat. Think LM Studio / Ollama but for 3D.
 
 - **Stack**: Electron 33, React 18 + TypeScript, Tailwind CSS 3, Vite, FastAPI (Python)
 - **State**: Zustand stores (appStore, navStore, favoritesStore, langStore, extensionsStore, workflowsStore)
-- **i18n**: Custom hook `useT()` from `src/shared/i18n/` — EN + FR supported
+- **i18n**: `useT()` hook from `src/shared/i18n/` — EN + FR
 - **3D rendering**: React Three Fiber + Three.js
 - **Workflows**: @xyflow/react node graph
 - **LLM inference**: llama-cpp-python with GGUF models, SSE streaming
+- **Repo (main)**: `https://github.com/martinleonardcyber-ops/dodai-3d`
+- **Dev branch**: `claude/modly-setup-bRzNa` on `martinleonardcyber-ops/martinleonardcyber-ops`
 
-## Dev branch
+## Key commands
 
-All work goes on: `claude/modly-setup-bRzNa`
+```bash
+cd modly
+npm run dev      # Electron + Vite dev server
+npm run build    # production build
+npm run lint     # ESLint
+```
+
+## Branding
+
+- **App name**: Dodai 3D (was "Modly" — fully renamed everywhere)
+- **App ID**: `com.dodai3d.app`
+- **Tagline**: "Local AI · open source · runs on your GPU"
+- **Colors**: bg `#09090b`, accent purple→blue `#8b5cf6 → #3b82f6`
+- **CSS**: `.btn-gradient` in `src/styles/globals.css`
+- **Design**: zinc palette, glassmorphism (backdrop-blur, rgba bg + borders, ambient orbs)
+- **Logo SVG**: `Sidebar.tsx:DodaiLogo` and `FirstRunSetup.tsx:DodaiLogo`
 
 ## Repository structure
 
 ```
 modly/
-├── electron/
-│   └── main/
-│       ├── index.ts            app bootstrap, BrowserWindow
-│       ├── ipc-handlers.ts     IPC events
-│       └── python-bridge.ts    manages FastAPI subprocess
+├── electron/main/
+│   ├── index.ts            BrowserWindow bootstrap
+│   ├── ipc-handlers.ts     IPC events
+│   └── python-bridge.ts    FastAPI subprocess manager (hideConsole on Windows)
 ├── src/
 │   ├── App.tsx
 │   ├── main.tsx
 │   ├── areas/
-│   │   ├── chat/
-│   │   │   └── ChatPage.tsx        ← MAIN ACTIVE FILE (rewrite pending)
-│   │   ├── dashboard/
-│   │   │   └── DashboardPage.tsx
+│   │   ├── chat/ChatPage.tsx              ← REWRITE PENDING (625 lines, spec below)
+│   │   ├── dashboard/DashboardPage.tsx
 │   │   ├── generate/
 │   │   │   ├── GeneratePage.tsx
 │   │   │   └── components/
@@ -45,180 +59,211 @@ modly/
 │   │   ├── models/
 │   │   │   ├── ModelsPage.tsx
 │   │   │   └── components/
-│   │   │       ├── LLMHub.tsx          ← planned rewrite
+│   │   │       ├── LLMHub.tsx             ← REWRITE PENDING
 │   │   │       ├── ModelCard.tsx
 │   │   │       ├── DownloadingCard.tsx
 │   │   │       └── ExtensionCard.tsx
-│   │   ├── settings/
-│   │   │   ├── SettingsPage.tsx
+│   │   ├── settings/SettingsPage.tsx
 │   │   │   └── components/
 │   │   │       ├── AboutSection.tsx
 │   │   │       ├── IntegrationsSection.tsx
 │   │   │       ├── LogsSection.tsx
 │   │   │       ├── PerformanceSection.tsx
 │   │   │       └── StorageSection.tsx
-│   │   ├── setup/
-│   │   │   └── FirstRunSetup.tsx
+│   │   ├── setup/FirstRunSetup.tsx        ← DodaiLogo SVG copy here
 │   │   └── workflows/
 │   │       ├── WorkflowsPage.tsx
 │   │       └── nodes/
-│   │           ├── BaseNode.tsx
+│   │           ├── BaseNode.tsx           shared frame
 │   │           ├── InputNode.tsx
 │   │           ├── TextNode.tsx
 │   │           ├── ImageNode.tsx
-│   │           ├── LLMNode.tsx
-│   │           ├── HttpNode.tsx
+│   │           ├── LLMNode.tsx            text → local model → text
+│   │           ├── HttpNode.tsx           GET/POST with URL + headers
 │   │           ├── AddToSceneNode.tsx
 │   │           ├── Load3DMeshNode.tsx
 │   │           ├── PreviewImageNode.tsx
 │   │           ├── ExtensionNode.tsx
-│   │           └── WorkflowEdge.tsx
+│   │           └── WorkflowEdge.tsx       animated gradient edge
 │   ├── shared/
-│   │   ├── components/
-│   │   │   ├── layout/
-│   │   │   │   ├── MainLayout.tsx
-│   │   │   │   ├── Sidebar.tsx         ← DodaiLogo SVG lives here
-│   │   │   │   └── TopBar.tsx
-│   │   │   ├── onboarding/
-│   │   │   │   └── OnboardingWizard.tsx
-│   │   │   └── ui/
-│   │   │       ├── ColorPicker.tsx
-│   │   │       ├── ConfirmModal.tsx
-│   │   │       ├── ErrorModal.tsx
-│   │   │       ├── FieldLabel.tsx
-│   │   │       ├── Tooltip.tsx
-│   │   │       └── UpdateModal.tsx
+│   │   ├── components/layout/
+│   │   │   ├── MainLayout.tsx
+│   │   │   ├── Sidebar.tsx               ← DodaiLogo SVG + lang toggle (EN/FR)
+│   │   │   └── TopBar.tsx
+│   │   ├── components/onboarding/OnboardingWizard.tsx
+│   │   ├── components/ui/
+│   │   │   ├── ColorPicker.tsx
+│   │   │   ├── ConfirmModal.tsx
+│   │   │   ├── ErrorModal.tsx
+│   │   │   ├── FieldLabel.tsx
+│   │   │   ├── Tooltip.tsx
+│   │   │   └── UpdateModal.tsx
 │   │   ├── hooks/
 │   │   │   ├── useApi.ts
 │   │   │   ├── useGeneration.ts
 │   │   │   └── useHardware.ts
 │   │   ├── i18n/
-│   │   │   ├── index.ts           exports useT()
-│   │   │   └── translations.ts    EN + FR keys
-│   │   ├── router/
-│   │   │   ├── Router.tsx
-│   │   │   └── routes.tsx
+│   │   │   ├── index.ts                  exports useT()
+│   │   │   └── translations.ts           full EN + FR (see below)
+│   │   ├── router/Router.tsx + routes.tsx
 │   │   ├── stores/
-│   │   │   ├── appStore.ts
+│   │   │   ├── appStore.ts               apiUrl
 │   │   │   ├── extensionsStore.ts
 │   │   │   ├── favoritesStore.ts
-│   │   │   ├── langStore.ts
-│   │   │   ├── navStore.ts
+│   │   │   ├── langStore.ts              localStorage key: dodai-lang
+│   │   │   ├── navStore.ts               Page type + navigate()
 │   │   │   └── workflowsStore.ts
-│   │   ├── types/
-│   │   │   ├── collections.ts
-│   │   │   └── electron.d.ts
-│   │   ├── ui/
-│   │   │   └── index.tsx
-│   │   └── utils/
-│   │       └── format.ts
-│   └── styles/globals.css      Tailwind + custom classes (.btn-gradient etc.)
-├── api/                        FastAPI backend (Python)
+│   │   ├── types/collections.ts + electron.d.ts
+│   │   └── utils/format.ts
+│   └── styles/globals.css               Tailwind + .btn-gradient
+├── api/
 │   ├── main.py
 │   ├── runner.py
-│   ├── routers/
-│   │   ├── llm.py              LLM inference + model hub
-│   │   ├── hardware.py         GPU detection (7-method cascade)
-│   │   ├── generation.py
-│   │   ├── model.py
-│   │   ├── optimize.py
-│   │   ├── export.py
-│   │   ├── settings.py
-│   │   ├── status.py
-│   │   ├── extensions.py
-│   │   ├── text_generation.py
-│   │   └── workflow_runs.py
-│   ├── schemas/
-│   │   └── generation.py
+│   └── routers/
+│       ├── llm.py                        LLM inference + model hub (full code below)
+│       ├── hardware.py                   GPU detection 7-method cascade
+│       ├── generation.py
+│       ├── model.py
+│       ├── optimize.py
+│       ├── export.py
+│       ├── settings.py
+│       ├── status.py
+│       ├── extensions.py
+│       ├── text_generation.py
+│       └── workflow_runs.py
+│   ├── schemas/generation.py
 │   └── services/
 │       ├── extension_process.py
 │       ├── generator_registry.py
 │       └── generators/
-└── resources/icons/            App icons (icon.png, .ico, .icns)
+└── resources/icons/                      icon.png, .ico, .icns
 ```
 
-## Key commands
-
-```bash
-cd modly
-npm run dev          # start Electron + Vite dev server
-npm run build        # production build
-npm run lint         # ESLint
-```
-
-## Branding
-
-- **App name**: Dodai 3D (was "Modly" — fully renamed)
-- **App ID**: `com.dodai3d.app`
-- **Tagline**: "Local AI · open source · runs on your GPU"
-- **Color scheme**: Dark (#09090b bg) + purple→blue gradient accent (#8b5cf6 → #3b82f6)
-- **Logo SVG**: in `Sidebar.tsx:DodaiLogo` and `FirstRunSetup.tsx:DodaiLogo`
-- **CSS class**: `.btn-gradient` in globals.css (purple→blue gradient button)
-- **Design system**: zinc palette, glassmorphism (backdrop-blur, rgba backgrounds, rgba borders)
-
-### Nano Banana logo prompt
-
-> A modern, minimalist 3D application logo for "Dodai 3D". The mark is an abstract geometric letterform — a stylized "D" built from two crystalline, faceted shapes that suggest depth and three-dimensionality. The shapes are rendered with a smooth gradient flowing from deep violet (#8B5CF6) at the top-left to electric blue (#3B82F6) at the bottom-right, with subtle lighter highlights (#C4B5FD) along the top edges to imply a light source. The overall silhouette is bold and symmetrical, fitting inside a rounded-square frame. Style: flat vector with gradient fill, clean hard edges, no shadows, no glow, no text. Suitable for use as an app icon at 64×64 px and 512×512 px.
+---
 
 ## Stores
 
-### navStore (`src/shared/stores/navStore.ts`)
+### navStore
 ```typescript
 type Page = 'dashboard' | 'chat' | 'generate' | 'workflows' | 'models' | 'settings'
-// Usage:
 const { navigate } = useNavStore()
 navigate('models')
 ```
 
-### appStore (`src/shared/stores/appStore.ts`)
+### appStore
 ```typescript
-// Key fields:
-const apiUrl = useAppStore((s) => s.apiUrl)  // e.g. "http://localhost:8765"
+const apiUrl = useAppStore((s) => s.apiUrl)  // "http://localhost:8765"
 ```
 
 ### langStore
-- localStorage key: `dodai-lang`
-- Zustand persist
+```typescript
+// localStorage key: dodai-lang
+// values: 'en' | 'fr'
+// Zustand persist
+```
 
-## i18n
+---
+
+## i18n — useT() full key tree
 
 ```typescript
 import { useT } from '@shared/i18n'
 const t = useT()
-// Chat keys:
-t.chat.title / t.chat.newChat / t.chat.systemPrompt / t.chat.systemDefault
-t.chat.temperature / t.chat.contextLength / t.chat.params / t.chat.copyCode
-t.chat.placeholder / t.chat.send / t.chat.stop / t.chat.loadingModel
-t.chat.thinking / t.chat.you / t.chat.assistant / t.chat.clearHistory
 ```
 
-To add a new language:
-1. Add key to `src/shared/i18n/translations.ts`
-2. Add lang type to `src/shared/stores/langStore.ts`
-3. Add toggle in `Sidebar.tsx`
+All keys (EN values shown):
 
-## FastAPI backend
+```
+t.nav.dashboard = 'Dashboard'
+t.nav.chat = 'Chat'
+t.nav.generate = 'Generate'
+t.nav.workflows = 'Workflows'
+t.nav.models = 'Models'
+t.nav.settings = 'Settings'
 
-- **Port**: 8765 (exposed via `apiUrl` from appStore)
-- **Base URL in dev**: `http://localhost:8765`
+t.topbar.updateReady = 'Update ready'
+t.topbar.restart = 'Restart'
 
-### LLM endpoints (`/llm/`)
+t.dashboard.welcome = 'Welcome to'
+t.dashboard.tagline = 'Local AI · open source · runs on your GPU'
+t.dashboard.quickStart = 'Quick start'
+t.dashboard.imageTo3D = 'Image to 3D'
+t.dashboard.textTo3D = 'Text prompt'
+t.dashboard.chat = 'Chat'
+t.dashboard.workflows = 'Workflows'
+t.dashboard.models = 'Models'
+t.dashboard.hardware = 'Hardware'
+t.dashboard.backendStatus = 'Backend'
+t.dashboard.ready = 'Ready' | t.dashboard.offline = 'Offline'
+t.dashboard.noGpu = 'No GPU'
+t.dashboard.vramUsed = 'VRAM used'
+t.dashboard.loadedModel = 'Loaded model'
+t.dashboard.noModel = 'No model loaded'
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/llm/models` | List downloaded GGUF models |
-| GET | `/llm/status` | `{ loaded: bool, model_id: string\|null }` |
-| POST | `/llm/load` | `{ model_id: string }` — loads model (n_ctx=4096) |
-| DELETE | `/llm/unload` | Unloads current model |
-| POST | `/llm/chat` | SSE stream — see ChatRequest schema |
-| GET | `/llm/hub/featured` | Curated model list |
-| GET | `/llm/hub/search?q=` | HuggingFace search |
-| POST | `/llm/hub/download` | `{ repo_id, filename }` — background download |
-| GET | `/llm/hub/download/{filename}/progress` | `{ progress, total, done, error }` |
-| DELETE | `/llm/hub/download/{filename}` | Cancel download |
-| DELETE | `/llm/models/{filename}` | Delete downloaded model |
+t.chat.title = 'Chat'
+t.chat.newChat = 'New chat'
+t.chat.systemPrompt = 'System prompt'
+t.chat.systemDefault = 'You are a helpful AI assistant.'
+t.chat.placeholder = 'Send a message…'
+t.chat.send = 'Send'
+t.chat.stop = 'Stop'
+t.chat.temperature = 'Temperature'
+t.chat.contextLength = 'Context'
+t.chat.loadingModel = 'Loading model…'
+t.chat.thinking = 'Thinking…'
+t.chat.you = 'You'
+t.chat.assistant = 'Assistant'
+t.chat.clearHistory = 'Clear history'
+t.chat.params = 'Parameters'
+t.chat.copyCode = 'Copy'
 
-### ChatRequest schema (`POST /llm/chat`)
+t.models.title = 'Models'
+t.models.llmTab = 'Language Models'
+t.models.threeDTab = '3D Models'
+t.models.download = 'Download'
+t.models.downloading = 'Downloading…'
+t.models.load = 'Load'
+t.models.loaded = 'Loaded'
+t.models.unload = 'Unload'
+t.models.delete = 'Delete'
+
+t.setup.checking = 'Checking environment…'
+t.setup.chooseFolder = 'Choose a data folder'
+t.setup.installing = 'Setting up environment…'
+t.setup.starting = 'Starting backend…'
+t.setup.error = 'Something went wrong'
+t.setup.retry = 'Retry'
+
+t.settings.about = 'About'
+t.settings.docs = 'Documentation'
+t.settings.github = 'GitHub'
+
+t.vram.free = 'free'
+```
+
+To add a translation key: edit `src/shared/i18n/translations.ts` (both `en` and `fr` objects), same shape.
+
+---
+
+## FastAPI backend — port 8765
+
+### All LLM endpoints
+
+| Method | Path | Body / Params | Response |
+|--------|------|---------------|----------|
+| GET | `/llm/models` | — | `LlmModelInfo[]` |
+| GET | `/llm/status` | — | `{ loaded, model_id }` |
+| POST | `/llm/load` | `{ model_id }` | `{ status, model_id }` |
+| DELETE | `/llm/unload` | — | `{ status }` |
+| POST | `/llm/chat` | `ChatRequest` | SSE stream |
+| GET | `/llm/hub/featured` | — | curated model list |
+| GET | `/llm/hub/search?q=` | — | HuggingFace results |
+| POST | `/llm/hub/download` | `{ repo_id, filename }` | `{ status }` |
+| GET | `/llm/hub/download/{filename}/progress` | — | `{ progress, total, done, error }` |
+| DELETE | `/llm/hub/download/{filename}` | — | cancel |
+| DELETE | `/llm/models/{filename}` | — | delete local file |
+
+### ChatRequest schema (Python)
 ```python
 class ChatRequest(BaseModel):
     model_id:      Optional[str] = None
@@ -228,7 +273,7 @@ class ChatRequest(BaseModel):
     system_prompt: str   = "You are a helpful AI assistant."
 ```
 
-### SSE stream format
+### SSE format
 ```
 data: {"token": "..."}\n\n
 ...
@@ -236,33 +281,57 @@ data: [DONE]\n\n
 ```
 
 ### Models directory
-`~/dodai-models/` — env var `MODELS_DIR` overrides. Only `.gguf` files are scanned.
+`~/dodai-models/` — env var `MODELS_DIR` overrides. Only `.gguf` files scanned.
 
 ### TODO in llm.py
-- `n_ctx` is hardcoded to 4096 in `/llm/load`. Make it accept `n_ctx` from the load request to support per-conversation context length.
+`n_ctx` is hardcoded to `4096` in `/llm/load`. Make it accept `n_ctx` from the load request body.
 
 ### Hardware endpoints
-- `GET /hardware/debug` — returns JSON with all 7 GPU detection method results
+- `GET /hardware/debug` — JSON with all 7 GPU detection method results
 
-## ChatPage — current state & planned rewrite
+---
 
-### Current file: `src/areas/chat/ChatPage.tsx` (625 lines)
+## ChatPage.tsx — current state (625 lines)
 
-**Problems in current version:**
-- `let msgCounter = 0` at module level (resets on HMR, not unique)
+File: `src/areas/chat/ChatPage.tsx`
+
+### Current components
+- `ModelDropdown` — searchable dropdown, green dot = loaded, spinner = loading
+- `MessageBubble` — user right-aligned (zinc glass), assistant left with purple avatar icon
+- `MessageContent` — splits on ` ``` ``` ` fenced blocks only (NO bold/italic/inline code yet)
+- `TypingIndicator` — 3 bouncing dots with purple avatar
+- `ChatPage` — main export
+
+### Current state variables
+```typescript
+const [models, setModels]                 // LlmModel[]
+const [modelsLoading, setModelsLoading]   // bool
+const [selectedId, setSelectedId]         // string | null
+const [loadingModelId, setLoadingModelId] // string | null
+const [messages, setMessages]             // Message[]
+const [input, setInput]                   // string
+const [streaming, setStreaming]           // bool
+const [temperature, setTemperature]       // number, 0.7 default
+const [contextLength]                     // FROZEN at 4096 — not editable
+const [systemPrompt]                      // FROZEN at t.chat.systemDefault — not editable
+const [showParams, setShowParams]         // bool, collapsible right panel
+```
+
+### Current bugs
+- `let msgCounter = 0` at module level — resets on HMR, not UUID-safe
 - No conversation persistence (lost on refresh)
 - No conversation sidebar
-- `contextLength` frozen at 4096, `systemPrompt` frozen at default (not editable)
-- `MessageContent` only handles fenced code blocks — no bold/italic/inline code
+- `contextLength` and `systemPrompt` are `useState` with no setter exposed in UI
+- `MessageContent` only handles fenced code blocks
 
-**Working SSE streaming pattern (preserve this exactly):**
+### Working SSE pattern — PRESERVE EXACTLY
 ```typescript
 const response = await fetch(`${apiUrl}/llm/chat`, {
-  method: 'POST',
+  method:  'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     model_id:      selectedId,
-    messages:      allMessages.map(m => ({ role: m.role, content: m.content })),
+    messages:      [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
     temperature,
     max_tokens:    contextLength,
     system_prompt: systemPrompt,
@@ -271,67 +340,76 @@ const response = await fetch(`${apiUrl}/llm/chat`, {
 })
 const reader  = response.body.getReader()
 const decoder = new TextDecoder()
-// reads lines starting with "data: ", parses JSON.parse(data).token
+// loop: read chunks, split on \n, lines starting "data: ", JSON.parse(data).token
 ```
 
-### Planned rewrite — data model
+---
+
+## ChatPage rewrite spec — URGENT TASK
+
+### Data model
 ```typescript
 interface Message {
-  id: string          // crypto.randomUUID()
-  role: 'user' | 'assistant'
+  id:      string   // crypto.randomUUID()
+  role:    'user' | 'assistant'
   content: string
 }
 
 interface Conversation {
-  id: string
-  title: string       // auto-set from first 50 chars of first user message
-  messages: Message[]
-  modelId: string | null
+  id:           string
+  title:        string   // auto from first 50 chars of first user msg
+  messages:     Message[]
+  modelId:      string | null
   systemPrompt: string
-  temperature: number
-  contextLength: number   // slider 512–8192, default 4096
-  createdAt: number
-  updatedAt: number
+  temperature:  number
+  contextLength: number  // slider 512–8192, default 4096
+  createdAt:    number
+  updatedAt:    number
 }
 ```
 
-### Planned rewrite — localStorage
+### localStorage
 ```typescript
 const STORAGE_KEY = 'dodai-chat-conversations'
-// Load: JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-// Save: localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations))
+// load: JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+// save: localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations))
 ```
 
-### Planned rewrite — layout
+### Layout
 ```
-┌─ 260px sidebar ──┬─── main chat ─────────────────────────────┐
-│ [+ New chat]     │  TopBar: conv title + ⚙ params toggle      │
-│                  ├──────────────────────────────────────────│
-│ Today            │  Messages (scrollable)                    │
-│  • Conv 1        │   - MessageBubble with markdown           │
-│  • Conv 2        │   - hover actions: copy/regen/edit        │
-│ Yesterday        │   - TypingIndicator                       │
-│  • Conv 3        ├──────────────────────────────────────────│
-│ This week        │  InputArea: textarea + ModelDropdown      │
-│ Older            │           + send/stop button              │
-│                  │                                           │
-│                  │  [Params panel: 220px right, collapsible] │
-│                  │   systemPrompt textarea                   │
-│                  │   temperature slider 0–2                 │
-│                  │   contextLength slider 512–8192           │
-└──────────────────┴───────────────────────────────────────────┘
+┌─ 260px sidebar ──┬─── main chat ──────────────────────────────┐
+│ [+ New chat]     │  TopBar: conv title + ⚙ params toggle       │
+│                  ├────────────────────────────────────────────│
+│ Today            │  Messages (scrollable, max-w-3xl centered)  │
+│  • Conv 1        │   MessageBubble with inline markdown        │
+│  • Conv 2        │   hover: copy / regen / edit                │
+│ Yesterday        │   TypingIndicator                           │
+│  • Conv 3        ├────────────────────────────────────────────│
+│ This week        │  InputArea: textarea + ModelDropdown        │
+│ Older            │            + send/stop button               │
+│                  │                                             │
+│                  │  [Params panel 220px right, collapsible]    │
+│                  │   systemPrompt textarea                     │
+│                  │   temperature slider 0–2                   │
+│                  │   contextLength slider 512–8192             │
+└──────────────────┴─────────────────────────────────────────────┘
 ```
 
-### Planned rewrite — sendMessages (avoids stale closure)
+### sendMessages signature (avoids stale closure)
 ```typescript
 async function sendMessages(
   convId: string,
   allMessages: Message[],
-  params: { modelId: string | null; temperature: number; contextLength: number; systemPrompt: string }
+  params: {
+    modelId:      string | null
+    temperature:  number
+    contextLength: number
+    systemPrompt: string
+  }
 )
 ```
 
-### Planned rewrite — auto-title
+### Auto-title
 ```typescript
 setConversations(prev => prev.map(c =>
   c.id === convId && c.title === 'New conversation'
@@ -340,57 +418,112 @@ setConversations(prev => prev.map(c =>
 ))
 ```
 
-### Planned rewrite — markdown rendering (no external lib)
-Inline parser: `**bold**` → `<strong>`, `*italic*` → `<em>`, `` `code` `` → `<code>`,
-fenced code blocks with language label + copy button.
+### Markdown renderer (no external lib)
+Parse inline: `**bold**` → `<strong>`, `*italic*` → `<em>`, `` `code` `` → `<code className="font-mono text-violet-300 bg-black/30 px-1 rounded">`.
+Fenced blocks: language label top-left + copy button top-right.
 
-### Planned rewrite — message actions (on hover)
-- All messages: copy content
-- Last assistant message: regenerate (re-sends history up to that point)
-- User messages: inline edit → re-trigger stream
+### Message hover actions
+- All messages: copy content button
+- Last assistant message: regenerate button (re-sends history minus last assistant msg)
+- User messages: inline edit → textarea → confirm → re-trigger stream
 
-### Planned rewrite — sidebar grouping
-Groups: **Today** / **Yesterday** / **This week** / **Older** (by `updatedAt`)
+### Sidebar grouping (by updatedAt)
+Groups: **Today** / **Yesterday** / **This week** / **Older**
 
-## GPU detection (hardware.py)
+### Write strategy (avoid stream timeout)
+Write in 2 separate files, then consolidate:
+1. `src/areas/chat/chatTypes.ts` — interfaces + STORAGE_KEY + helpers
+2. Rewrite `ChatPage.tsx` importing from chatTypes.ts
 
-7-method cascade in order:
-1. `pynvml` — direct NVML binding (fastest, most reliable)
-2. `nvidia-smi` — subprocess, multiple Windows paths
+---
+
+## GPU detection (hardware.py) — 7-method cascade
+
+1. `pynvml` — direct NVML binding
+2. `nvidia-smi` subprocess — multiple Windows paths
 3. `nvidia-smi` via PowerShell — finds exe anywhere on disk
-4. `torch.cuda` — if PyTorch installed in venv
-5. `winreg` — reads display adapter class from Windows Registry
-6. `wmic` — Windows Management Instrumentation CLI
-7. `Get-CimInstance` via PowerShell — Windows 11 wmic replacement
+4. `torch.cuda` — if PyTorch in venv
+5. `winreg` — Windows Registry display adapter class
+6. `wmic` — WMI CLI
+7. `Get-CimInstance` via PowerShell — Windows 11 replacement for wmic
 
-**Debug endpoint**: `GET http://localhost:8765/hardware/debug`
+**Debug**: `GET http://localhost:8765/hardware/debug` — paste JSON to diagnose RTX 4060 issue.
 
-**Ongoing issue**: GPU detection failing for RTX 4060 Windows machine.
-After `git pull` + restart, check the debug endpoint and paste JSON to diagnose.
+---
 
-## Pending tasks (ordered by priority)
+## Featured models in LLM Hub (llm.py)
 
-1. **[URGENT] Rewrite `src/areas/chat/ChatPage.tsx`**
-   Full spec above — sidebar + persistence + markdown + message actions + per-conv params.
-   Write in 2 parts (types/helpers first, then main component) to avoid stream timeout.
+8 curated models, all from bartowski/microsoft/google HuggingFace repos:
 
-2. **[next] `api/routers/llm.py`** — make `n_ctx` configurable via `/llm/load` body
+| Model | Author | Params | Min VRAM | Tags |
+|-------|--------|--------|----------|------|
+| Llama 3.2 1B | Meta | 1B | 1 GB | lightweight |
+| Llama 3.2 3B | Meta | 3B | 2 GB | chat |
+| Llama 3.1 8B | Meta | 8B | 6 GB | recommended, coding |
+| Phi-3.5 Mini | Microsoft | 3.8B | 3 GB | reasoning |
+| Qwen 2.5 7B | Alibaba | 7B | 5 GB | multilingual, français |
+| Gemma 2 2B | Google | 2B | 2 GB | chat |
+| Mistral 7B v0.3 | Mistral AI | 7B | 5 GB | français, fast |
+| DeepSeek R1 8B | DeepSeek | 8B | 6 GB | reasoning, coding |
 
-3. **[next] `src/areas/models/components/LLMHub.tsx`**
-   Premium glassmorphism model cards, "Start Chat →" button per model
+All use Q4_K_M quantization as default variant. Each has Q8_0 option where available.
 
-4. **[fix] GPU detection** — RTX 4060 on Windows not detected, check `/hardware/debug`
+---
 
-## Vision: "Ollama/LM Studio for 3D"
+## Workflows (n8n-style)
 
-- Model hub with one-click download and status indicators ✅ (done)
-- Hardware detection + onboarding wizard ✅ (done)
-- LLM chat with local GGUF models ✅ (done, rewrite pending)
-- n8n-style visual workflow builder ✅ (done)
-- EN/FR bilingual ✅ (done)
-- Chat conversation history + persistence ← in progress
-- Hardware dashboard (GPU usage, VRAM, temp)
-- Generation history with preview
-- Batch generation support
-- Plugin/extension system (started)
-- REST API for programmatic access
+Built with `@xyflow/react`. Features:
+- "+" hover button on node output → adds connected node
+- Right-click context menu: duplicate, delete, add node
+- Ctrl+C/V copy-paste, Ctrl+D duplicate, Ctrl+A select all
+- MiniMap + Controls panel
+- Execution log panel (green/red borders per node after run)
+
+Node types: `InputNode`, `TextNode`, `ImageNode`, `LLMNode`, `HttpNode`, `AddToSceneNode`, `Load3DMeshNode`, `PreviewImageNode`, `ExtensionNode`
+Edge: `WorkflowEdge` (animated gradient)
+
+---
+
+## Pending tasks (priority order)
+
+### 1. URGENT — Rewrite ChatPage.tsx
+Full spec above. Write in 2 parts to avoid timeout:
+- First: `src/areas/chat/chatTypes.ts` (interfaces, helpers, storage utils)
+- Then: full `ChatPage.tsx` rewrite importing from chatTypes.ts
+
+### 2. NEXT — Make n_ctx configurable in /llm/load
+File: `api/routers/llm.py`
+```python
+# Change LoadRequest to:
+class LoadRequest(BaseModel):
+    model_id: str
+    n_ctx:    int = 4096
+
+# Then pass req.n_ctx to Llama():
+_llm = Llama(model_path=..., n_ctx=req.n_ctx, n_gpu_layers=-1, verbose=False)
+```
+
+### 3. NEXT — Rewrite LLMHub.tsx
+File: `src/areas/models/components/LLMHub.tsx`
+Premium glassmorphism model cards. Add "Start Chat →" button per model that:
+1. Navigates to chat page
+2. Triggers model load
+
+### 4. FIX — GPU detection RTX 4060 Windows
+Check `/hardware/debug`, share JSON output to diagnose.
+
+---
+
+## Vision roadmap
+
+- [x] Model hub with one-click download
+- [x] Hardware detection + onboarding wizard
+- [x] Local LLM chat (GGUF + llama-cpp-python, SSE streaming)
+- [x] n8n-style visual workflow builder
+- [x] EN/FR bilingual
+- [ ] Chat conversation history + persistence (URGENT)
+- [ ] Hardware dashboard (GPU usage, VRAM, temp live)
+- [ ] Generation history with 3D preview
+- [ ] Batch generation
+- [ ] Plugin/extension system (started)
+- [ ] REST API for programmatic access
