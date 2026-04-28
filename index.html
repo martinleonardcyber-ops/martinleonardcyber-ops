@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Atelier — Premium relocation. White-glove moving services for homes and businesses." />
+    <title>Atelier — Move, quietly.</title>
+
+    <!-- Priority-preload the hero's first frame so LCP is immediate -->
+    <link rel="preload" as="image" href="/frames/frame_0001.jpg" fetchpriority="high" />
+
+    <style>
+      /* Prevent flash of unstyled background */
+      html { background: hsl(20 15% 9%); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Frame extraction reminder — remove after setup -->
+    <noscript>
+      <p style="font-family:sans-serif;padding:2rem;color:#ccc;background:#111;">
+        JavaScript is required to run this site.
+      </p>
+    </noscript>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
