@@ -1,0 +1,113 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#131323"/>
+      <stop offset="100%" stop-color="#0a0a14"/>
+    </linearGradient>
+    <!-- Front face: violet → blue top-to-bottom -->
+    <linearGradient id="front-g" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#9333ea"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <!-- Left extrusion: darker purple -->
+    <linearGradient id="left-g" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#4c1d95"/>
+    </linearGradient>
+    <!-- Top extrusion: lighter purple -->
+    <linearGradient id="top-g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <!-- Inner top: medium purple -->
+    <linearGradient id="inner-top-g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <!-- Inner left extrusion -->
+    <linearGradient id="inner-left-g" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5b21b6"/>
+      <stop offset="100%" stop-color="#3730a3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="108" ry="108" fill="url(#bg-g)"/>
+
+  <!-- ══════════════════════════════════════════════
+       LEFT EXTRUSION (back-left face of the D)
+       Offset by (-36, -36) from front face
+  ══════════════════════════════════════════════ -->
+
+  <!-- Left face: left edge of front → left edge of back -->
+  <polygon
+    points="128,82 128,430 92,394 92,46"
+    fill="url(#left-g)"
+    opacity="0.95"
+  />
+
+  <!-- Top face: top edge of front → top edge of back -->
+  <polygon
+    points="128,82 252,82 288,96 320,110 92,46 "
+    fill="url(#top-g)"
+    opacity="0.92"
+  />
+  <!-- Top face right portion (curved top of D) -->
+  <polygon
+    points="252,82 310,96 360,130 400,180 364,144 320,110 288,96"
+    fill="url(#top-g)"
+    opacity="0.80"
+  />
+
+  <!-- ══════════════════════════════════════════════
+       FRONT FACE of the D
+  ══════════════════════════════════════════════ -->
+  <!-- Outer D shape with inner counter, using evenodd fill -->
+  <path
+    d="M 128,82
+       L 128,430
+       L 252,430
+       Q 296,430 330,416
+       Q 396,386 416,316
+       Q 428,286 428,256
+       Q 428,226 416,196
+       Q 396,126 330,96
+       Q 296,82 252,82
+       Z
+       M 204,158
+       L 204,354
+       L 252,354
+       Q 282,354 304,342
+       Q 344,318 350,256
+       Q 344,194 304,170
+       Q 282,158 252,158
+       Z"
+    fill="url(#front-g)"
+    fill-rule="evenodd"
+  />
+
+  <!-- ══════════════════════════════════════════════
+       INNER COUNTER EXTRUSION
+       (the hole of the D, also 3D)
+  ══════════════════════════════════════════════ -->
+
+  <!-- Inner top face -->
+  <polygon
+    points="204,158 252,158 284,172 216,172"
+    fill="url(#inner-top-g)"
+    opacity="0.7"
+  />
+
+  <!-- Inner left face -->
+  <polygon
+    points="204,158 204,354 216,366 216,172"
+    fill="url(#inner-left-g)"
+    opacity="0.6"
+  />
+
+  <!-- Subtle highlight on top-left corner of front face -->
+  <polygon
+    points="128,82 204,82 204,158 128,158"
+    fill="rgba(196,181,253,0.08)"
+  />
+</svg>

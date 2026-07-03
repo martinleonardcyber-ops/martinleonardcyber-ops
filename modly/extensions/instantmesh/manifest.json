@@ -1,0 +1,56 @@
+{
+  "id": "instantmesh",
+  "name": "InstantMesh (Fast Image → 3D)",
+  "description": "TencentARC's fast multi-view reconstruction model (2024). Generates a 3D mesh from a single image in seconds by synthesising 6 multi-view images then running sparse-view LRM reconstruction.",
+  "version": "1.0.0",
+  "author": "TencentARC (extension by Dodai)",
+  "license": "Apache-2.0",
+  "generator_class": "InstantMeshGenerator",
+  "type": "model",
+  "input": "image",
+  "output": "mesh",
+  "supports_text": false,
+  "vram_gb": 8,
+  "tags": ["image-to-3d", "fast", "tencent", "multiview", "2024"],
+  "hf_repo": "TencentARC/InstantMesh",
+  "hf_skip_prefixes": ["*.md", "LICENSE", "examples/"],
+  "download_check": "checkpoints",
+  "params_schema": [
+    {
+      "id": "num_views",
+      "label": "Multi-view count",
+      "type": "select",
+      "default": 6,
+      "options": [
+        { "value": 4, "label": "4 views — Faster" },
+        { "value": 6, "label": "6 views — Standard" }
+      ],
+      "tooltip": "Number of synthetic views to generate before 3D reconstruction."
+    },
+    {
+      "id": "guidance_scale",
+      "label": "Guidance scale",
+      "type": "float",
+      "default": 4.0,
+      "min": 1.0,
+      "max": 10.0,
+      "tooltip": "How closely the multi-view images follow the input."
+    },
+    {
+      "id": "num_steps",
+      "label": "Diffusion steps",
+      "type": "int",
+      "default": 75,
+      "min": 30,
+      "max": 100,
+      "tooltip": "Steps for multi-view image generation."
+    },
+    {
+      "id": "export_texmap",
+      "label": "Export texture map",
+      "type": "bool",
+      "default": true,
+      "tooltip": "Bake a UV texture map onto the output mesh."
+    }
+  ]
+}
